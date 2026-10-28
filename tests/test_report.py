@@ -38,9 +38,9 @@ def test_shrinking_and_new_or_gone():
     ch = changes(before, after)
     shrunk = culprits(ch, min_bytes=GB, limit=10, growing=False)
     assert [c.path for c in shrunk] == ["/old"]
-    assert shrunk[0].is_gone
+    assert shrunk[0].after == 0
     grown = culprits(ch, min_bytes=GB, limit=10)
-    assert [c.path for c in grown] == ["/new"] and grown[0].is_new
+    assert [c.path for c in grown] == ["/new"] and grown[0].before == 0
 
 
 def test_small_changes_are_ignored():

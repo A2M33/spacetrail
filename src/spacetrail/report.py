@@ -19,14 +19,6 @@ class Change:
     before: int
     after: int
 
-    @property
-    def is_new(self) -> bool:
-        return self.before == 0 and self.after > 0
-
-    @property
-    def is_gone(self) -> bool:
-        return self.after == 0 and self.before > 0
-
 
 def pick_baseline(snaps: list[Snapshot], days: float) -> tuple[Snapshot, Snapshot] | None:
     """Latest snapshot, and the newest one at least `days` older (or the oldest we have)."""

@@ -62,7 +62,14 @@ class Store:
     def close(self) -> None:
         self.db.close()
 
-    def save(self, result: ScanResult, disk: tuple[int, int] | None = None, taken: float | None = None) -> Snapshot:
+    def save(
+        self,
+        result: ScanResult,
+        disk: tuple[int, int] | None = None,
+        taken: float | None = None,
+        min_size: int = 1024**2,
+    ) -> Snapshot:
+        """Folders under `min_size` aren't stored; a full drive has tens of thousands of tiny ones."""
         taken = time.time() if taken is None else taken
         free, total = disk if disk else (None, None)
         with self.db:
@@ -73,7 +80,7 @@ class Store:
             sid = cur.lastrowid
             self.db.executemany(
                 "INSERT INTO folder (snapshot, path, size) VALUES (?, ?, ?)",
-                ((sid, p, s) for p, s in result.sizes.items()),
+                ((sid, p, s) for p, s in result.sizes.items() if s >= min_size or p == result.root),
             )
         return Snapshot(sid, result.root, taken, result.files, free, total)
 

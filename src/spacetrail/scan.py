@@ -35,7 +35,7 @@ def _is_link(entry: os.DirEntry) -> bool:
     return False
 
 
-def scan(root: str | Path, depth: int = 4, progress=None) -> ScanResult:
+def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
     """Total size of every folder up to `depth` levels below root.
 
     Deeper folders still count, they just get added to their ancestor at `depth`.

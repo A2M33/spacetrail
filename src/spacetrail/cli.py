@@ -38,6 +38,8 @@ class Style:
 
 
 def _style() -> Style:
+    if os.environ.get("FORCE_COLOR"):
+        return Style(True)
     if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
         return Style(False)
     if sys.platform == "win32":
@@ -85,9 +87,12 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
     biggest = max(abs(c.delta) for c in rows)
     for c in rows:
         size = human(c.delta, signed=True).rjust(11)
-        note = " new" if c.is_new else " deleted" if c.is_gone else ""
+        # Folders under 1 MB aren't stored, so 0 really means "less than 1 MB".
+        before = human(c.before) if c.before else "<1 MB"
+        after = human(c.after) if c.after else "<1 MB"
         color = s.red if growing else s.green
-        print(f"  {color(size)}  {s.dim(_bar(abs(c.delta), biggest))}  {_short(c.path, root)}{s.dim(note)}")
+        print(f"  {color(size)}  {s.dim(_bar(abs(c.delta), biggest))}  {_short(c.path, root)}"
+              f"  {s.dim(f'{before} -> {after}')}")
 
 
 # ---------- commands ----------
@@ -200,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd")
 
     def common(sp):
-        sp.add_argument("--depth", type=int, default=4, help="how many folder levels to remember (default 4)")
+        sp.add_argument("--depth", type=int, default=6, help="how many folder levels to remember (default 6)")
         sp.add_argument("--keep", type=float, default=90, help="days of snapshots to keep (default 90)")
 
     rp = sub.add_parser("report", help="show what grew (default command)")
