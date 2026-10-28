@@ -7,9 +7,10 @@ from dataclasses import dataclass
 
 from .store import Snapshot
 
-# A folder is only worth listing if a single child doesn't explain most of its change.
-# Otherwise we'd print C:\Users, C:\Users\you and C:\Users\you\Downloads for one download.
-EXPLAINED_BY_CHILD = 0.8
+# A folder is only worth listing if its listed subfolders don't already explain most of
+# its change. Otherwise we'd print C:\Users, C:\Users\you and C:\Users\you\Downloads
+# for a single download.
+EXPLAINED_BY_CHILDREN = 0.8
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ def culprits(all_changes: dict[str, Change], min_bytes: int, limit: int, growing
     picked = []
     for c in big.values():
         kids = children.get(c.path, [])
-        if any(k.delta * sign >= EXPLAINED_BY_CHILD * c.delta * sign for k in kids):
+        if sum(k.delta * sign for k in kids) >= EXPLAINED_BY_CHILDREN * c.delta * sign:
             continue
         picked.append(c)
     picked.sort(key=lambda c: c.delta * sign, reverse=True)

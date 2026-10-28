@@ -24,12 +24,19 @@ def test_child_that_explains_growth_replaces_parent():
     assert [c.path for c in picked] == ["/home/dl"]
 
 
-def test_growth_spread_over_children_keeps_parent():
+def test_parent_explained_by_several_children_is_dropped():
     before = {"/": 0, "/a": 0, "/a/x": 0, "/a/y": 0}
     after = {"/": 4 * GB, "/a": 4 * GB, "/a/x": 2 * GB, "/a/y": 2 * GB}
     picked = culprits(changes(before, after), min_bytes=GB, limit=10)
-    assert {c.path for c in picked} == {"/a", "/a/x", "/a/y"}
-    assert picked[0].path == "/a"
+    assert {c.path for c in picked} == {"/a/x", "/a/y"}
+
+
+def test_growth_in_loose_files_keeps_parent():
+    # 5 GB, but only 1 GB of it in a subfolder: the parent itself is the answer.
+    before = {"/": 0, "/a": 0, "/a/x": 0}
+    after = {"/": 5 * GB, "/a": 5 * GB, "/a/x": 1 * GB}
+    picked = culprits(changes(before, after), min_bytes=GB, limit=10)
+    assert [c.path for c in picked] == ["/a", "/a/x"]
 
 
 def test_shrinking_and_new_or_gone():
