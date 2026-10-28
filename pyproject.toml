@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spacetrail"
+dynamic = ["version"]
+description = "Find out which folders ate your disk space this week. Daily snapshots, zero dependencies."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "A2M33" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["disk", "disk-usage", "storage", "cli", "windows", "sysadmin"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: System :: Filesystems",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/A2M33/spacetrail"
+
+[project.scripts]
+spacetrail = "spacetrail.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.dynamic]
+version = { attr = "spacetrail.__version__" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

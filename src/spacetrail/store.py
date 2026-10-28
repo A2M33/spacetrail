@@ -1,0 +1,104 @@
+"""Snapshots live in one SQLite file, so there is nothing to install or run."""
+
+from __future__ import annotations
+
+import os
+import sqlite3
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+from .scan import ScanResult
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS snapshot (
+    id INTEGER PRIMARY KEY,
+    root TEXT NOT NULL,
+    taken REAL NOT NULL,          -- unix time
+    files INTEGER NOT NULL,
+    disk_free INTEGER,            -- free bytes on that drive at scan time
+    disk_total INTEGER
+);
+CREATE TABLE IF NOT EXISTS folder (
+    snapshot INTEGER NOT NULL REFERENCES snapshot(id) ON DELETE CASCADE,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    PRIMARY KEY (snapshot, path)
+) WITHOUT ROWID;
+"""
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    id: int
+    root: str
+    taken: float
+    files: int
+    disk_free: int | None
+    disk_total: int | None
+
+
+def data_dir() -> Path:
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return base / "spacetrail"
+
+
+def default_db() -> Path:
+    return Path(os.environ.get("SPACETRAIL_DB", data_dir() / "snapshots.db"))
+
+
+class Store:
+    def __init__(self, path: Path | str | None = None) -> None:
+        path = Path(path) if path else default_db()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(path)
+        self.db.execute("PRAGMA foreign_keys = ON")
+        self.db.executescript(SCHEMA)
+
+    def close(self) -> None:
+        self.db.close()
+
+    def save(self, result: ScanResult, disk: tuple[int, int] | None = None, taken: float | None = None) -> Snapshot:
+        taken = time.time() if taken is None else taken
+        free, total = disk if disk else (None, None)
+        with self.db:
+            cur = self.db.execute(
+                "INSERT INTO snapshot (root, taken, files, disk_free, disk_total) VALUES (?, ?, ?, ?, ?)",
+                (result.root, taken, result.files, free, total),
+            )
+            sid = cur.lastrowid
+            self.db.executemany(
+                "INSERT INTO folder (snapshot, path, size) VALUES (?, ?, ?)",
+                ((sid, p, s) for p, s in result.sizes.items()),
+            )
+        return Snapshot(sid, result.root, taken, result.files, free, total)
+
+    def snapshots(self, root: str | None = None) -> list[Snapshot]:
+        sql = "SELECT id, root, taken, files, disk_free, disk_total FROM snapshot"
+        args: tuple = ()
+        if root:
+            sql += " WHERE root = ?"
+            args = (root,)
+        return [Snapshot(*row) for row in self.db.execute(sql + " ORDER BY taken", args)]
+
+    def roots(self) -> list[str]:
+        return [r for (r,) in self.db.execute("SELECT DISTINCT root FROM snapshot ORDER BY root")]
+
+    def sizes(self, snapshot_id: int) -> dict[str, int]:
+        return dict(self.db.execute("SELECT path, size FROM folder WHERE snapshot = ?", (snapshot_id,)))
+
+    def prune(self, keep_days: float, now: float | None = None) -> int:
+        """Delete old snapshots, but always keep the newest one per folder."""
+        now = time.time() if now is None else now
+        cutoff = now - keep_days * 86400
+        with self.db:
+            cur = self.db.execute(
+                """DELETE FROM snapshot WHERE taken < ? AND id NOT IN
+                   (SELECT id FROM snapshot s WHERE taken = (SELECT MAX(taken) FROM snapshot WHERE root = s.root))""",
+                (cutoff,),
+            )
+        return cur.rowcount
