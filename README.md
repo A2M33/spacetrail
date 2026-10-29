@@ -19,7 +19,11 @@ WinDirStat and WizTree show what's big today. They have no memory of last week, 
 
 ## Install
 
-Needs Python 3.10 or newer. There are no other dependencies.
+**Windows, no Python needed.** Download `spacetrail.exe` from the [latest release](https://github.com/A2M33/spacetrail/releases/latest) and put it in a folder that stays put, like `C:\Tools`, before you run `spacetrail schedule`. The daily task remembers where the file lives. Double-clicking it shows the weekly report.
+
+Windows SmartScreen may warn you the first time because the file isn't code-signed. Click "More info", then "Run anyway". GitHub Actions builds the file from this repository's code on every release.
+
+**With Python 3.10 or newer** (Windows, Linux, macOS):
 
 ```bash
 pip install git+https://github.com/A2M33/spacetrail
