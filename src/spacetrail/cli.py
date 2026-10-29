@@ -1,4 +1,4 @@
-"""Command line: `spacetrail` (report), `snap`, `list`, `schedule`, `unschedule`."""
+"""Command line: `spacetrail` (report), `snap`, `top`, `list`, `schedule`, `unschedule`."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from . import __version__, schedule
 from .report import (
     Change, biggest, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim,
 )
+from .hints import hint
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -107,6 +108,14 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
         print(f"  {color(size)}  {color(_bar(abs(c.delta), biggest))}  {s.dim(sizes)}  {_short(c.path, root)}")
+        if growing:
+            _print_hint(c.path, 2 + 10 + 2 + 10 + 2 + len(sizes) + 2, s)
+
+
+def _print_hint(path: str, indent: int, s: Style) -> None:
+    note = hint(path)
+    if note:
+        print(" " * indent + s.dim(note))
 
 
 def _print_biggest(rows: list[Change], root: str, s: Style) -> None:
@@ -116,6 +125,7 @@ def _print_biggest(rows: list[Change], root: str, s: Style) -> None:
     top = rows[0].after
     for c in rows:
         print(f"  {s.bold(human(c.after).rjust(10))}  {s.dim(_bar(c.after, top))}  {_short(c.path, root)}")
+        _print_hint(c.path, 2 + 10 + 2 + 10 + 2, s)
 
 
 def _offer_schedule(root: str) -> bool:
@@ -232,8 +242,8 @@ def _report_json(r: dict) -> dict:
     if r["status"] != "ok":
         return {"root": r["root"], "path": r["path"], "status": r["status"]}
     old, new = r["old"], r["new"]
-    rows = lambda rows: [{"path": c.path, "change": c.delta, "before": c.before, "after": c.after}
-                         for c in rows]
+    rows = lambda rows: [{"path": c.path, "change": c.delta, "before": c.before, "after": c.after,
+                          "hint": hint(c.path)} for c in rows]
     return {
         "root": r["root"], "path": r["path"], "status": "ok",
         "from": _iso(old.taken), "to": _iso(new.taken),
@@ -278,23 +288,76 @@ def cmd_report(args, store: Store) -> int:
             print("Let spacetrail take one every day:  spacetrail schedule")
         return 0
 
-    if args.path:
-        focus = os.path.abspath(args.path)
-        root = store.root_for(focus)
-        if root is None:
-            print(f"No snapshots of {focus} yet. Take one with:  spacetrail snap \"{focus}\"\n"
-                  f"Folders with snapshots: {', '.join(store.roots())}", file=sys.stderr)
-            return 1
-        targets = [(root, focus)]
-    else:
-        targets = [(root, root) for root in store.roots()]
-
+    targets = _targets(args, store)
+    if targets is None:
+        return 1
     reports = [_compare(store, root, focus, args) for root, focus in targets]
     if as_json:
         _emit_json({"reports": [_report_json(r) for r in reports]})
     else:
         for r in reports:
             _print_report(r, args, s)
+    return 0
+
+
+def _targets(args, store: Store) -> list[tuple[str, str]] | None:
+    """(snapshot root, folder to show) pairs, or None after explaining an unknown path."""
+    if not args.path:
+        return [(root, root) for root in store.roots()]
+    focus = os.path.abspath(args.path)
+    root = store.root_for(focus)
+    if root is None:
+        print(f"No snapshots of {focus} yet. Take one with:  spacetrail snap \"{focus}\"\n"
+              f"Folders with snapshots: {', '.join(store.roots())}", file=sys.stderr)
+        return None
+    return [(root, focus)]
+
+
+def cmd_top(args, store: Store) -> int:
+    s = _style()
+    as_json = getattr(args, "json", False)
+    if args.fresh or not store.roots():
+        paths = [args.path] if args.path else []
+        if not store.roots() and not as_json:
+            print(f"No snapshots yet. Taking the first one of {os.path.abspath(args.path or default_root())} now...\n")
+        code = cmd_snap(argparse.Namespace(paths=paths, depth=args.depth, keep=args.keep, quiet=as_json), store)
+        if code:
+            return code
+        if not as_json:
+            print()
+    targets = _targets(args, store)
+    if targets is None:
+        return 1
+
+    tops = []
+    for root, focus in targets:
+        snap = store.snapshots(root)[-1]
+        sizes = _rebase(store.sizes(snap.id), snap.root, root)
+        shown = next((p for p in sizes if path_key(p) == path_key(focus)), None)
+        if shown is None:
+            tops.append({"root": root, "path": focus, "status": "not_stored"})
+            continue
+        sizes = {p: n for p, n in sizes.items() if is_within(p, shown)}
+        tops.append({"root": root, "path": shown, "status": "ok", "snap": snap, "size": sizes[shown],
+                     "rows": biggest(sizes, shown, args.n)})
+
+    if as_json:
+        _emit_json({"tops": [
+            {"root": t["root"], "path": t["path"], "status": t["status"]} if t["status"] != "ok" else
+            {"root": t["root"], "path": t["path"], "status": "ok", "taken": _iso(t["snap"].taken),
+             "size": t["size"],
+             "folders": [{"path": c.path, "size": c.after, "hint": hint(c.path)} for c in t["rows"]]}
+            for t in tops
+        ]})
+        return 0
+    for t in tops:
+        if t["status"] != "ok":
+            print(f"{s.bold(t['path'])}: not in the snapshots of {t['root']}. spacetrail only remembers "
+                  "folders over 1 MB, a few levels deep (see --depth).\n")
+            continue
+        print(s.bold(t["path"]) + s.dim(f"   {human(t['size'])}, snapshot from {_when(t['snap'].taken)}"))
+        _print_biggest(t["rows"], t["path"], s)
+        print()
     return 0
 
 
@@ -399,6 +462,13 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the daily task
     common(sp)
 
+    tp = sub.add_parser("top", help="show the biggest folders, with tips for known space hogs")
+    tp.add_argument("path", nargs="?", help="only this folder")
+    tp.add_argument("-n", type=_positive(int), default=15, help="how many folders (default 15)")
+    tp.add_argument("--fresh", action="store_true", help="take a new snapshot first")
+    tp.add_argument("--json", action="store_true", help="print the list as JSON (UTF-8)")
+    common(tp)
+
     sub.add_parser("list", help="list saved snapshots")
 
     sc = sub.add_parser("schedule", help="take a snapshot automatically every day")
@@ -413,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = ["report", *argv]
     args = p.parse_args(argv)
 
-    handlers = {"report": cmd_report, "snap": cmd_snap, "list": cmd_list,
+    handlers = {"report": cmd_report, "snap": cmd_snap, "top": cmd_top, "list": cmd_list,
                 "schedule": cmd_schedule, "unschedule": cmd_unschedule}
     hidden = False
     if args.cmd == "snap":

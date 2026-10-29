@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from spacetrail import cli, schedule
+from spacetrail import cli, hints, schedule
 from spacetrail.cli import main
 from spacetrail.report import Change
 from spacetrail.store import Store
@@ -235,6 +235,12 @@ def test_no_color_wins(monkeypatch):
     assert not cli._style().on
 
 
+@pytest.fixture(autouse=True)
+def _tmp_path_is_not_temp(monkeypatch, tmp_path):
+    # pytest's tmp_path lives in %TEMP%, which would put the Temp cleanup hint on every row.
+    monkeypatch.setattr(cli, "hint", lambda path: hints.hint(os.path.relpath(path, tmp_path)))
+
+
 def _first_run(tmp_path, monkeypatch, double_clicked, answer="", installed=False):
     monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
     data = tmp_path / "data"
@@ -266,3 +272,20 @@ def test_first_run_lists_biggest_folders(tmp_path, monkeypatch, capsys):
 def test_double_clicked_first_run_offers_daily_snapshots(answer, installed, expect, tmp_path, monkeypatch):
     data, scheduled = _first_run(tmp_path, monkeypatch, double_clicked=True, answer=answer, installed=installed)
     assert scheduled == ([[str(data)]] if expect else [])
+
+
+def test_top_lists_biggest_with_hints(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    _grow(data / "site" / "node_modules" / "pkg.bin", 4)
+    _grow(data / "photos" / "img.bin", 2)
+    assert main(["top", str(data)]) == 0  # no snapshot yet: takes one
+    out = capsys.readouterr().out
+    assert "node_modules" in out and "npm install" in out and "photos" in out
+    assert (data / "site" / "node_modules" / "pkg.bin").exists()  # never deletes anything
+
+    assert main(["top", str(data / "site"), "--json", "-n", "1"]) == 0
+    (top,) = json.loads(capsys.readouterr().out)["tops"]
+    assert top["path"] == str(data / "site")
+    assert [f["path"] for f in top["folders"]] == [str(data / "site" / "node_modules")]
+    assert "npm install" in top["folders"][0]["hint"]
