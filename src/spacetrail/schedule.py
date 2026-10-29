@@ -15,6 +15,8 @@ CRON_TAG = "# spacetrail"
 
 
 def _python() -> str:
+    if getattr(sys, "frozen", False):
+        return sys.executable  # the standalone spacetrail.exe
     # pythonw.exe runs without opening a console window every day.
     exe = Path(sys.executable)
     quiet = exe.with_name("pythonw.exe")
@@ -22,7 +24,8 @@ def _python() -> str:
 
 
 def _args(paths: list[str]) -> list[str]:
-    return ["-m", "spacetrail", "snap", "--quiet", *paths]
+    prefix = [] if getattr(sys, "frozen", False) else ["-m", "spacetrail"]
+    return [*prefix, "snap", "--quiet", *paths]
 
 
 def _task_xml(paths: list[str], time: str) -> str:

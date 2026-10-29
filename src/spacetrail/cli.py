@@ -236,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
 
     handlers = {"report": cmd_report, "snap": cmd_snap, "list": cmd_list,
                 "schedule": cmd_schedule, "unschedule": cmd_unschedule}
+    if args.cmd == "snap" and args.quiet:
+        _hide_console()
     store = Store()
     try:
         return handlers[args.cmd](args, store)
@@ -243,3 +245,28 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     finally:
         store.close()
+        _pause_if_double_clicked()
+
+
+def _is_windows_exe() -> bool:
+    return sys.platform == "win32" and getattr(sys, "frozen", False)
+
+
+def _hide_console() -> None:
+    # The daily task starts spacetrail.exe in its own console; hide it right away.
+    if _is_windows_exe():
+        import ctypes
+
+        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+
+
+def _pause_if_double_clicked() -> None:
+    # Double-clicking spacetrail.exe opens a console that closes as soon as we return.
+    # If we're the only process attached to it, nobody started us from a terminal.
+    if not _is_windows_exe():
+        return
+    import ctypes
+
+    procs = (ctypes.c_uint32 * 2)()
+    if ctypes.windll.kernel32.GetConsoleProcessList(procs, 2) == 1:
+        input("\nPress Enter to close.")
