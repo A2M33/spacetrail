@@ -229,6 +229,7 @@ def test_rows_say_new_and_deleted_and_line_up(capsys):
 
 
 def test_no_color_wins(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
     assert cli._style().on
     monkeypatch.setenv("NO_COLOR", "1")
