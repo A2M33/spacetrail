@@ -72,7 +72,10 @@ def _when(ts: float) -> str:
 
 
 def _short(path: str, root: str) -> str:
-    rel = os.path.relpath(path, root)
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:  # different drives on Windows
+        return path
     return root if rel == "." else rel
 
 

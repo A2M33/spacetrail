@@ -213,8 +213,8 @@ def test_changing_depth_does_not_invent_growth(tmp_path, monkeypatch, capsys):
     assert "Nothing changed" in capsys.readouterr().out
 
 
-def test_rows_say_new_and_deleted_and_line_up(capsys):
-    root = os.path.abspath("r")
+def test_rows_say_new_and_deleted_and_line_up(capsys, tmp_path):
+    root = str(tmp_path / "r")
     rows = [
         Change(os.path.join(root, "fresh"), 3 * 1024**3, 0, 3 * 1024**3),
         Change(os.path.join(root, "a", "much", "deeper", "folder"), 200 * 1024**2, 1024**2, 201 * 1024**2),
