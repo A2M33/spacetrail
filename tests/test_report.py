@@ -1,3 +1,5 @@
+import pytest
+
 from spacetrail.report import changes, culprits, human, parse_days, parse_size, pick_baseline
 from spacetrail.store import Snapshot
 
@@ -66,3 +68,12 @@ def test_formatting_and_parsing():
     assert parse_days("2w") == 14
     assert parse_days("12h") == 0.5
     assert parse_days("3") == 3
+
+
+def test_bad_sizes_and_spans_raise_value_error():
+    for bad in ("abc", "-5MB", "nan", ""):
+        with pytest.raises(ValueError):
+            parse_size(bad)
+    for bad in ("1y", "-3d", "inf", ""):
+        with pytest.raises(ValueError):
+            parse_days(bad)

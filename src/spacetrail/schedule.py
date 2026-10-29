@@ -55,15 +55,28 @@ def _task_xml(paths: list[str], time: str) -> str:
 """
 
 
+def parse_time(text: str) -> str:
+    """'9:05' -> '09:05'. Raises ValueError for anything that isn't a time of day."""
+    hour, sep, minute = text.strip().partition(":")
+    if sep and hour.isdigit() and minute.isdigit() and int(hour) < 24 and int(minute) < 60:
+        return f"{int(hour):02d}:{int(minute):02d}"
+    raise ValueError(f"not a time of day: {text!r} (use HH:MM, like 09:00 or 21:30)")
+
+
+def _run(cmd: list[str], what: str, **kw) -> None:
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", **kw)
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout).strip() or f"exit code {r.returncode}"
+        raise RuntimeError(f"{what} failed: {msg}")
+
+
 def install(paths: list[str], time: str = "12:30") -> str:
+    time = parse_time(time)
     if sys.platform == "win32":
         with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-16") as f:
             f.write(_task_xml(paths, time))
         try:
-            subprocess.run(
-                ["schtasks", "/Create", "/TN", TASK, "/XML", f.name, "/F"],
-                check=True, capture_output=True, text=True,
-            )
+            _run(["schtasks", "/Create", "/TN", TASK, "/XML", f.name, "/F"], "schtasks")
         finally:
             os.unlink(f.name)
         return f"Windows Task Scheduler will take a snapshot every day at {time} (task name: {TASK})."
@@ -72,7 +85,7 @@ def install(paths: list[str], time: str = "12:30") -> str:
         raise RuntimeError("crontab not found. Add this to your scheduler by hand:\n" + _cron_line(paths, time))
     lines = [line for line in _crontab() if CRON_TAG not in line]
     lines.append(_cron_line(paths, time))
-    subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True, check=True)
+    _run(["crontab", "-"], "crontab", input="\n".join(lines) + "\n")
     return f"cron will take a snapshot every day at {time}."
 
 
@@ -84,7 +97,7 @@ def uninstall() -> str:
     kept = [line for line in lines if CRON_TAG not in line]
     if len(kept) == len(lines):
         return "There was no cron entry."
-    subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n", text=True, check=True)
+    _run(["crontab", "-"], "crontab", input="\n".join(kept) + "\n")
     return "Removed the cron entry."
 
 

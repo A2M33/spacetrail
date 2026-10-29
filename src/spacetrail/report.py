@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 
@@ -71,20 +72,35 @@ def human(n: int, signed: bool = False) -> str:
     raise AssertionError  # unreachable
 
 
+def _number(text: str) -> float | None:
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and value >= 0 else None
+
+
 def parse_size(text: str) -> int:
     """'500MB' -> bytes. Plain numbers are megabytes."""
     t = text.strip().upper().replace(" ", "")
     units = {"TB": 1024**4, "GB": 1024**3, "MB": 1024**2, "KB": 1024, "B": 1}
-    for unit, mult in units.items():
+    number, mult = t, 1024**2
+    for unit, m in units.items():
         if t.endswith(unit):
-            return int(float(t[: -len(unit)]) * mult)
-    return int(float(t) * 1024**2)
+            number, mult = t[: -len(unit)], m
+            break
+    value = _number(number)
+    if value is None:
+        raise ValueError(f"not a size: {text!r} (try 500MB or 2GB)")
+    return int(value * mult)
 
 
 def parse_days(text: str) -> float:
     """'7d', '2w', '12h', or a plain number of days."""
     t = text.strip().lower()
-    mult = {"h": 1 / 24, "d": 1, "w": 7, "m": 30}
-    if t and t[-1] in mult:
-        return float(t[:-1]) * mult[t[-1]]
-    return float(t)
+    mults = {"h": 1 / 24, "d": 1, "w": 7, "m": 30}
+    number, mult = (t[:-1], mults[t[-1]]) if t and t[-1] in mults else (t, 1)
+    value = _number(number)
+    if value is None:
+        raise ValueError(f"not a time span: {text!r} (try 12h, 3d, 2w or 1m)")
+    return value * mult

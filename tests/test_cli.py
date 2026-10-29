@@ -97,3 +97,39 @@ def test_report_path_ignores_case_on_windows(tmp_path, monkeypatch, capsys):
     assert main(["report", str(data).lower(), "--since", "0", "--min", "1MB"]) == 0
     out = capsys.readouterr().out
     assert "only one snapshot" not in out and "+3.0 MB" in out
+
+
+@pytest.mark.parametrize("argv, flag", [
+    (["report", "--min", "abc"], "--min"),
+    (["report", "--since", "1y"], "--since"),
+    (["report", "--min", "-5MB"], "--min"),
+    (["report", "--top", "0"], "--top"),
+    (["snap", "--depth", "-1"], "--depth"),
+    (["schedule", "--time", "25:00"], "--time"),
+    (["schedule", "--time", "noon"], "--time"),
+])
+def test_bad_arguments_give_a_short_error(argv, flag, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    with pytest.raises(SystemExit) as exit_info:
+        main(argv)
+    assert exit_info.value.code == 2
+    err = capsys.readouterr().err
+    assert flag in err and "Traceback" not in err
+
+
+def test_schedule_time_is_normalized():
+    assert schedule.parse_time("9:5") == "09:05"
+    assert "T09:05:00" in schedule._task_xml(["C:\\"], schedule.parse_time("9:5"))
+
+
+def test_schtasks_failure_shows_its_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    monkeypatch.setattr(schedule.sys, "platform", "win32")
+
+    def fake_run(cmd, **kw):
+        return schedule.subprocess.CompletedProcess(cmd, 1, "", "ERROR: Access is denied.\n")
+
+    monkeypatch.setattr(schedule.subprocess, "run", fake_run)
+    assert main(["schedule", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "Access is denied" in err and "Traceback" not in err

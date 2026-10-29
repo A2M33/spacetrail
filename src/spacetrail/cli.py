@@ -155,7 +155,7 @@ def cmd_report(args, store: Store) -> int:
     else:
         targets = [(root, root) for root in store.roots()]
 
-    days, min_bytes = parse_days(args.since), parse_size(args.min)
+    days, min_bytes = args.since, args.min
     for root, focus in targets:
         pair = pick_baseline(store.snapshots(root), days)
         if pair is None:
@@ -220,6 +220,29 @@ def cmd_unschedule(args, store: Store) -> int:
     return 0
 
 
+def _checked(parse):
+    """Turn a parser's ValueError into a one-line argparse error instead of a traceback."""
+    def convert(text: str):
+        try:
+            return parse(text)
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(str(e)) from None
+    convert.__name__ = parse.__name__
+    return convert
+
+
+def _positive(kind):
+    def parse(text: str):
+        try:
+            value = kind(text)
+        except ValueError:
+            value = None
+        if value is None or not value > 0:
+            raise ValueError(f"expected a number above 0, got {text!r}")
+        return value
+    return _checked(parse)
+
+
 def _fix_streams() -> None:
     # pythonw.exe (the daily task) starts us with no console at all: sys.stdout and
     # sys.stderr are None, and the first print would crash the snapshot.
@@ -243,14 +266,17 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd")
 
     def common(sp):
-        sp.add_argument("--depth", type=int, default=6, help="how many folder levels to remember (default 6)")
-        sp.add_argument("--keep", type=float, default=90, help="days of snapshots to keep (default 90)")
+        sp.add_argument("--depth", type=_positive(int), default=6,
+                        help="how many folder levels to remember (default 6)")
+        sp.add_argument("--keep", type=_positive(float), default=90, help="days of snapshots to keep (default 90)")
 
     rp = sub.add_parser("report", help="show what grew (default command)")
     rp.add_argument("path", nargs="?", help="only this snapshot root")
-    rp.add_argument("--since", default="7d", help="compare with this long ago: 12h, 3d, 2w (default 7d)")
-    rp.add_argument("--min", default="100MB", help="ignore changes smaller than this (default 100MB)")
-    rp.add_argument("--top", type=int, default=12, help="rows per list (default 12)")
+    rp.add_argument("--since", type=_checked(parse_days), default="7d",
+                    help="compare with this long ago: 12h, 3d, 2w (default 7d)")
+    rp.add_argument("--min", type=_checked(parse_size), default="100MB",
+                    help="ignore changes smaller than this (default 100MB)")
+    rp.add_argument("--top", type=_positive(int), default=12, help="rows per list (default 12)")
     rp.add_argument("--fresh", action="store_true", help="take a new snapshot first")
     common(rp)
 
@@ -263,7 +289,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sc = sub.add_parser("schedule", help="take a snapshot automatically every day")
     sc.add_argument("paths", nargs="*", help=f"folders to scan (default {default_root()})")
-    sc.add_argument("--time", default="12:30", help="time of day, HH:MM (default 12:30)")
+    sc.add_argument("--time", type=_checked(schedule.parse_time), default="12:30",
+                    help="time of day, HH:MM (default 12:30)")
 
     sub.add_parser("unschedule", help="remove the daily snapshot")
 
@@ -281,6 +308,9 @@ def main(argv: list[str] | None = None) -> int:
         return handlers[args.cmd](args, store)
     except KeyboardInterrupt:
         return 130
+    except RuntimeError as e:  # schtasks or cron said no; their message says why
+        print(f"spacetrail: error: {e}", file=sys.stderr)
+        return 1
     finally:
         store.close()
         _pause_if_double_clicked()
