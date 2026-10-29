@@ -1,6 +1,9 @@
+import os
 import pytest
 
-from spacetrail.report import changes, culprits, human, parse_days, parse_size, pick_baseline
+from spacetrail.report import (
+    changes, culprits, deepest, human, level, parse_days, parse_size, pick_baseline, trim,
+)
 from spacetrail.store import Snapshot
 
 GB = 1024**3
@@ -77,3 +80,13 @@ def test_bad_sizes_and_spans_raise_value_error():
     for bad in ("1y", "-3d", "inf", ""):
         with pytest.raises(ValueError):
             parse_days(bad)
+
+
+def test_trim_to_shallower_depth():
+    r = os.path.abspath("r")
+    a, b = os.path.join(r, "a"), os.path.join(r, "a", "b")
+    sizes = {r: 9, a: 9, b: 9, os.path.join(b, "c"): 9}
+    assert deepest(sizes, r) == 3
+    assert trim(sizes, r, 1) == {r: 9, a: 9}
+    root = os.path.abspath(os.sep)  # C:\ or /
+    assert level(root, root) == 0 and level(os.path.join(root, "x"), root) == 1

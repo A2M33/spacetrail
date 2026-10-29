@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS snapshot (
     taken REAL NOT NULL,          -- unix time
     files INTEGER NOT NULL,
     disk_free INTEGER,            -- free bytes on that drive at scan time
-    disk_total INTEGER
+    disk_total INTEGER,
+    depth INTEGER                 -- folder levels stored; NULL in databases from 0.2 and older
 );
 CREATE TABLE IF NOT EXISTS folder (
     snapshot INTEGER NOT NULL REFERENCES snapshot(id) ON DELETE CASCADE,
@@ -37,6 +38,7 @@ class Snapshot:
     files: int
     disk_free: int | None
     disk_total: int | None
+    depth: int | None = None
 
 
 def path_key(path: str) -> str:
@@ -69,6 +71,13 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {row[1] for row in self.db.execute("PRAGMA table_info(snapshot)")}
+        if "depth" not in cols:  # databases from 0.2 and older
+            with self.db:
+                self.db.execute("ALTER TABLE snapshot ADD COLUMN depth INTEGER")
 
     def close(self) -> None:
         self.db.close()
@@ -85,18 +94,18 @@ class Store:
         free, total = disk if disk else (None, None)
         with self.db:
             cur = self.db.execute(
-                "INSERT INTO snapshot (root, taken, files, disk_free, disk_total) VALUES (?, ?, ?, ?, ?)",
-                (result.root, taken, result.files, free, total),
+                "INSERT INTO snapshot (root, taken, files, disk_free, disk_total, depth) VALUES (?, ?, ?, ?, ?, ?)",
+                (result.root, taken, result.files, free, total, result.depth),
             )
             sid = cur.lastrowid
             self.db.executemany(
                 "INSERT INTO folder (snapshot, path, size) VALUES (?, ?, ?)",
                 ((sid, p, s) for p, s in result.sizes.items() if s >= min_size or p == result.root),
             )
-        return Snapshot(sid, result.root, taken, result.files, free, total)
+        return Snapshot(sid, result.root, taken, result.files, free, total, result.depth)
 
     def snapshots(self, root: str | None = None) -> list[Snapshot]:
-        sql = "SELECT id, root, taken, files, disk_free, disk_total FROM snapshot ORDER BY taken"
+        sql = "SELECT id, root, taken, files, disk_free, disk_total, depth FROM snapshot ORDER BY taken"
         snaps = [Snapshot(*row) for row in self.db.execute(sql)]
         if root:
             key = path_key(root)

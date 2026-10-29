@@ -1,4 +1,5 @@
 import os
+import sqlite3
 
 from spacetrail.scan import scan
 from spacetrail.store import Store
@@ -48,4 +49,28 @@ def test_store_roundtrip_and_prune(tmp_path):
     assert store.sizes(new.id)[r.root] == 10
     assert store.prune(keep_days=30, now=new.taken) == 1
     assert [s.id for s in store.snapshots()] == [new.id]
+    store.close()
+
+
+OLD_SCHEMA = """
+CREATE TABLE snapshot (id INTEGER PRIMARY KEY, root TEXT NOT NULL, taken REAL NOT NULL,
+    files INTEGER NOT NULL, disk_free INTEGER, disk_total INTEGER);
+CREATE TABLE folder (snapshot INTEGER NOT NULL REFERENCES snapshot(id) ON DELETE CASCADE,
+    path TEXT NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (snapshot, path)) WITHOUT ROWID;
+INSERT INTO snapshot VALUES (1, '/data', 1000, 3, NULL, NULL);
+INSERT INTO folder VALUES (1, '/data', 99);
+"""
+
+
+def test_database_from_0_2_is_migrated_in_place(tmp_path):
+    db = tmp_path / "db.sqlite"
+    con = sqlite3.connect(db)
+    con.executescript(OLD_SCHEMA)
+    con.close()
+    store = Store(db)
+    (old,) = store.snapshots()
+    assert old.depth is None and store.sizes(old.id) == {"/data": 99}
+    write(tmp_path / "data" / "f.bin", 10)
+    new = store.save(scan(tmp_path / "data", depth=4))
+    assert store.snapshots()[-1].depth == new.depth == 4
     store.close()

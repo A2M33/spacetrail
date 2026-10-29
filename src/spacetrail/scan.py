@@ -22,6 +22,7 @@ class ScanResult:
     sizes: dict[str, int] = field(default_factory=dict)  # folder -> bytes, including subfolders
     files: int = 0
     skipped: int = 0  # folders we weren't allowed to read
+    depth: int = 6  # folder levels below root that got their own entry
 
 
 def _is_link(entry: os.DirEntry) -> bool:
@@ -42,7 +43,7 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
     That keeps the database small while still pointing you at the right place.
     """
     root = os.path.abspath(root)
-    result = ScanResult(root=root)
+    result = ScanResult(root=root, depth=depth)
     root_dev = os.stat(root).st_dev
     totals: dict[str, int] = {root: 0}
     # Iterative walk: deep trees would hit Python's recursion limit.

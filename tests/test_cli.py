@@ -199,3 +199,14 @@ def test_report_json(tmp_path, monkeypatch, capsysbinary):
     assert rep["status"] == "ok" and rep["path"] == str(data)
     assert rep["grew"][0]["path"] == str(data / "Документы")
     assert rep["grew"][0]["change"] == 3 * 1024 * 1024
+
+
+def test_changing_depth_does_not_invent_growth(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    _grow(data / "a" / "b" / "c" / "big.bin", 2)
+    assert main(["snap", "--quiet", "--depth", "1", str(data)]) == 0
+    assert main(["snap", "--quiet", "--depth", "3", str(data)]) == 0
+    capsys.readouterr()
+    assert main(["report", str(data), "--since", "0", "--min", "1MB"]) == 0
+    assert "Nothing changed" in capsys.readouterr().out

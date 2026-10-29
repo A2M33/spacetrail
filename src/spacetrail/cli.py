@@ -12,7 +12,7 @@ import traceback
 from datetime import datetime
 
 from . import __version__, schedule
-from .report import Change, changes, culprits, human, parse_days, parse_size, pick_baseline
+from .report import Change, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -142,6 +142,13 @@ def _compare(store: Store, root: str, focus: str, args) -> dict:
     old, new = pair
     before = _rebase(store.sizes(old.id), old.root, new.root)
     after = store.sizes(new.id)
+    # A snapshot with --depth 8 has folders a --depth 6 one never recorded. Comparing them
+    # as-is would report every level-7 folder as new, so compare at the shallower depth.
+    depth_old = old.depth if old.depth is not None else deepest(before, new.root)
+    depth_new = new.depth if new.depth is not None else deepest(after, new.root)
+    if depth_old != depth_new:
+        depth = min(depth_old, depth_new)
+        before, after = trim(before, new.root, depth), trim(after, new.root, depth)
     # `report C:\Users\me` drills into a snapshot of C:\ and shows only what's below it.
     shown = next((p for d in (after, before) for p in d if path_key(p) == path_key(focus)), None)
     if shown is None:

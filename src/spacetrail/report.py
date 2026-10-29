@@ -32,6 +32,22 @@ def pick_baseline(snaps: list[Snapshot], days: float) -> tuple[Snapshot, Snapsho
     return (older[-1] if older else snaps[0]), latest
 
 
+def level(path: str, root: str) -> int:
+    """How many folders below root: root is 0, root/a is 1. `path` must be under root."""
+    rest = path[len(root):].strip(os.sep)
+    return rest.count(os.sep) + 1 if rest else 0
+
+
+def deepest(sizes: dict[str, int], root: str) -> int:
+    """Best guess at a snapshot's depth when the database doesn't say (0.2 and older)."""
+    return max((level(p, root) for p in sizes), default=0)
+
+
+def trim(sizes: dict[str, int], root: str, depth: int) -> dict[str, int]:
+    """Drop folders deeper than `depth`. Their bytes are already in their ancestors' totals."""
+    return {p: n for p, n in sizes.items() if level(p, root) <= depth}
+
+
 def changes(before: dict[str, int], after: dict[str, int]) -> dict[str, Change]:
     out = {}
     for path in before.keys() | after.keys():
