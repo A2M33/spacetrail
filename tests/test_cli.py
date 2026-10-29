@@ -148,3 +148,17 @@ def test_only_scheduled_runs_hide_the_console(flag, console_is_ours, hidden, tmp
     monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: calls.append("pause"))
     assert main(["snap", flag, str(tmp_path)]) == 0
     assert calls == (["hide"] if hidden else ["pause"])
+
+
+def test_double_clicked_exe_shows_error_before_pausing(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    seen = []
+
+    def boom(args, store):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(cli, "cmd_list", boom)
+    monkeypatch.setattr(cli, "_console_is_ours", lambda: True)
+    monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: seen.append(capsys.readouterr().err))
+    assert main(["list"]) == 1
+    assert len(seen) == 1 and "ValueError: boom" in seen[0]

@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import time
+import traceback
 from datetime import datetime
 
 from . import __version__, schedule
@@ -310,16 +311,24 @@ def main(argv: list[str] | None = None) -> int:
         hidden = args.scheduled or (args.quiet and _console_is_ours())
         if hidden:
             _hide_console()
-    store = Store()
+    store = None
     try:
+        store = Store()
         return handlers[args.cmd](args, store)
     except KeyboardInterrupt:
         return 130
     except RuntimeError as e:  # schtasks or cron said no; their message says why
         print(f"spacetrail: error: {e}", file=sys.stderr)
         return 1
+    except Exception:
+        if not _console_is_ours():
+            raise
+        # A double-clicked exe pauses below; print the error first or it never shows.
+        traceback.print_exc()
+        return 1
     finally:
-        store.close()
+        if store:
+            store.close()
         if not hidden:  # nobody could press Enter in a hidden window
             _pause_if_double_clicked()
 
