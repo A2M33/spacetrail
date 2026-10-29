@@ -193,9 +193,20 @@ def cmd_unschedule(args, store: Store) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+def _fix_streams() -> None:
+    # pythonw.exe (the daily task) starts us with no console at all: sys.stdout and
+    # sys.stderr are None, and the first print would crash the snapshot.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    enc = getattr(sys.stdout, "encoding", None)
+    if enc and enc.lower() not in ("utf-8", "utf8") and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+
+
+def main(argv: list[str] | None = None) -> int:
+    _fix_streams()
 
     p = argparse.ArgumentParser(
         prog="spacetrail",
