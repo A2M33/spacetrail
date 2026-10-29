@@ -19,7 +19,7 @@ WinDirStat and WizTree show what's big today. They have no memory of last week, 
 
 ## Install
 
-**Windows, no Python needed.** Download `spacetrail.exe` from the [latest release](https://github.com/A2M33/spacetrail/releases/latest) and put it in a folder that stays put, like `C:\Tools`, before you run `spacetrail schedule`. The daily task remembers where the file lives. Double-clicking it shows the weekly report.
+**Windows, no Python needed.** Download `spacetrail.exe` from the [latest release](https://github.com/A2M33/spacetrail/releases/latest) and put it in a folder that stays put, like `C:\Tools`, before you run `spacetrail schedule`. The daily task remembers where the file lives. The first double-click scans your drive, lists the biggest folders and asks if you want a snapshot every day. After that, a double-click shows the weekly report.
 
 Windows SmartScreen may warn you the first time because the file isn't code-signed. Click "More info", then "Run anyway". GitHub Actions builds the file from this repository's code on every release.
 
@@ -36,28 +36,36 @@ spacetrail schedule   # take a snapshot every day (Windows Task Scheduler or cro
 spacetrail            # what grew in the last 7 days
 ```
 
-Run without any history, `spacetrail` takes a baseline snapshot. You get your first report after the second snapshot.
+The first run scans all of `C:\` (your home folder on Linux and macOS). Expect 10 to 30 seconds. You then see the ten biggest folders, and your first report of what grew arrives after the second snapshot.
+
+Each snapshot ends with a line like `Saved C:\: 212.4 GB in 801,233 files (19s, 412 folders not readable)`. Those unreadable folders are normal without admin rights: Windows keeps some system folders private, and spacetrail counts them and moves on. Run it from an admin terminal if you want them included.
 
 | Command | What it does |
 | --- | --- |
 | `spacetrail` | Report changes since about a week ago |
 | `spacetrail --since 1d` | Compare with yesterday (`12h`, `3d`, `2w` and `1m` also work) |
-| `spacetrail --fresh` | Take a snapshot now, then report. Good when the disk *just* filled up |
+| `spacetrail --fresh` | Snapshot the folders you track, then report. Good when the disk *just* filled up |
 | `spacetrail --min 1GB` | Hide changes smaller than 1 GB (default 100 MB) |
+| `spacetrail report C:\Users\you` | Show only what changed inside one folder of a snapshot |
+| `spacetrail top` | List the biggest folders in the latest snapshot, with cleanup tips |
+| `spacetrail top C:\Users\you -n 30` | The 30 biggest folders inside one folder |
+| `spacetrail --json`, `spacetrail top --json` | Print UTF-8 JSON for scripts |
 | `spacetrail snap D:\ E:\` | Snapshot other drives or folders |
 | `spacetrail report D:\` | Report on one of them |
 | `spacetrail list` | Show saved snapshots |
 | `spacetrail schedule --time 09:00` | Change the daily time (default 12:30) |
 | `spacetrail unschedule` | Remove the daily task |
 
-By default it scans the system drive on Windows (`C:\`) and your home folder on Linux and macOS.
+## Cleanup tips
+
+`spacetrail top` and the report add a one-line tip under folders that often fill disks: your temp folder, Windows Update downloads (`Windows\SoftwareDistribution\Download`), browser caches, `node_modules`, the Recycle Bin, and the pip and npm caches. The tip says how to reclaim the space, like `pip cache purge` or the right page in Windows Settings. spacetrail deletes nothing on its own, so you choose what to clear.
 
 ## How it works
 
-- **Scanning.** spacetrail walks the drive and adds up file sizes. On my machine a full `C:\` with 800,000 files takes 10 to 30 seconds. It skips junctions and symlinks so it never counts a file twice, and on Linux it also skips other mounted drives and `/proc`-style folders. It counts the folders Windows won't let it read and moves on.
-- **Storage.** spacetrail writes folder sizes up to six levels deep into a SQLite file at `%LOCALAPPDATA%\spacetrail\snapshots.db` on Windows or `~/.local/share/spacetrail/` on Linux and macOS. Deeper folders add to their parent at level six. It leaves out folders under 1 MB, which keeps a full-drive snapshot near 1 MB, and it deletes snapshots older than 90 days (change that with `--keep`).
+- **Scanning.** spacetrail walks the drive and adds up file sizes. On my machine a full `C:\` with 800,000 files takes 10 to 30 seconds. It skips junctions and symlinks so it never counts a file twice, but it does count OneDrive folders. On Linux it also skips other mounted drives and `/proc`-style folders.
+- **Storage.** spacetrail writes folder sizes up to six levels deep into a SQLite file at `%LOCALAPPDATA%\spacetrail\snapshots.db` on Windows or `~/.local/share/spacetrail/` on Linux and macOS. Deeper folders add to their parent at level six. Change that with `--depth`; if two snapshots used different depths, spacetrail compares them at the shallower one. It leaves out folders under 1 MB, which keeps a full-drive snapshot near 1 MB, and it deletes snapshots older than 90 days (change that with `--keep`).
 - **Finding the culprit.** Say `Users` grew by 10 GB and 9 GB of that sits in `Users\you\Downloads`. Listing all three folders adds noise, so spacetrail shows a folder only when the subfolders already on the list explain less than 80% of its growth.
-- **Daily runs.** The Windows task uses "run as soon as possible after a missed start", so a laptop that was off at 12:30 still gets its snapshot once you turn it on. It starts through `pythonw`, which means no console window flashes up.
+- **Daily runs.** The Windows task uses "run as soon as possible after a missed start", so a laptop that was off at 12:30 still gets its snapshot once you turn it on. It starts through `pythonw`, or hides the console of `spacetrail.exe`, so no window flashes up.
 
 ## Development
 

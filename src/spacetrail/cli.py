@@ -456,7 +456,7 @@ def main(argv: list[str] | None = None) -> int:
         sp.add_argument("--keep", type=_positive(float), default=90, help="days of snapshots to keep (default 90)")
 
     rp = sub.add_parser("report", help="show what grew (default command)")
-    rp.add_argument("path", nargs="?", help="only this snapshot root")
+    rp.add_argument("path", nargs="?", help="only this folder: a snapshot root or a folder inside one")
     rp.add_argument("--since", type=_checked(parse_days), default="7d",
                     help="compare with this long ago: 12h, 3d, 2w (default 7d)")
     rp.add_argument("--min", type=_checked(parse_size), default="100MB",
