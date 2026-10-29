@@ -1,0 +1,26 @@
+name: release
+
+# Builds spacetrail.exe on a clean Windows runner and attaches it to the release,
+# so people without Python can download one file.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]" pyinstaller
+      - run: pytest -q
+      - run: pyinstaller --onefile --name spacetrail --paths src packaging/entry.py
+      - run: dist\spacetrail.exe --version
+      - run: gh release upload ${{ github.event.release.tag_name }} dist/spacetrail.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
