@@ -1,6 +1,10 @@
 import os
 import sqlite3
+from types import SimpleNamespace
 
+import pytest
+
+from spacetrail import scan as scan_module
 from spacetrail.scan import scan
 from spacetrail.store import Store
 
@@ -74,3 +78,26 @@ def test_database_from_0_2_is_migrated_in_place(tmp_path):
     new = store.save(scan(tmp_path / "data", depth=4))
     assert store.snapshots()[-1].depth == new.depth == 4
     store.close()
+
+
+class FakeEntry:
+    def __init__(self, attributes, tag=0):
+        self._stat = SimpleNamespace(st_file_attributes=attributes, st_reparse_tag=tag)
+
+    def is_symlink(self):
+        return False
+
+    def stat(self, follow_symlinks=True):
+        return self._stat
+
+
+@pytest.mark.parametrize("attributes, tag, is_link", [
+    (0x10, 0, False),               # plain folder
+    (0x410, 0xA000000C, True),      # symlink
+    (0x410, 0xA0000003, True),      # junction
+    (0x410, 0x9000601A, False),     # OneDrive placeholder folder
+    (0x410, 0x9000001A, False),     # other cloud files tag
+])
+def test_only_symlinks_and_junctions_are_skipped(attributes, tag, is_link, monkeypatch):
+    monkeypatch.setattr(scan_module.sys, "platform", "win32")
+    assert scan_module._is_link(FakeEntry(attributes, tag)) is is_link

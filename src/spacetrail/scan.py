@@ -11,6 +11,10 @@ from pathlib import Path
 # Windows marks junctions and symlinks as "reparse points". Following them would count
 # the same files twice (or loop forever), so we skip them like Explorer's size dialog does.
 _REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+_LINK_TAGS = {
+    getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C),
+    getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003),  # junctions
+}
 
 # Linux pseudo-filesystems that look like folders but aren't real disk usage.
 _SKIP_UNIX = {"/proc", "/sys", "/dev", "/run"}
@@ -30,9 +34,15 @@ def _is_link(entry: os.DirEntry) -> bool:
         return True
     if sys.platform == "win32":
         try:
-            return bool(entry.stat(follow_symlinks=False).st_file_attributes & _REPARSE)
+            st = entry.stat(follow_symlinks=False)
         except OSError:
             return True
+        if not st.st_file_attributes & _REPARSE:
+            return False
+        # OneDrive and other cloud folders are reparse points too, but their files are
+        # real and local. Only symlinks and junctions lead somewhere we'd count twice.
+        tag = getattr(st, "st_reparse_tag", 0)
+        return tag in _LINK_TAGS or not tag
     return False
 
 
