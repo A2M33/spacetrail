@@ -1,4 +1,8 @@
+import json
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -162,3 +166,36 @@ def test_double_clicked_exe_shows_error_before_pausing(tmp_path, monkeypatch, ca
     monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: seen.append(capsys.readouterr().err))
     assert main(["list"]) == 1
     assert len(seen) == 1 and "ValueError: boom" in seen[0]
+
+
+def _two_snaps_with_growth(tmp_path, monkeypatch, name):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    data.mkdir()
+    assert main(["snap", "--quiet", str(data)]) == 0
+    _grow(data / name / "big.bin", 3)
+    assert main(["snap", "--quiet", str(data)]) == 0
+    return data
+
+
+def test_piped_report_keeps_non_ascii_names(tmp_path, monkeypatch):
+    data = _two_snaps_with_growth(tmp_path, monkeypatch, "Документы")
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    env["PYTHONPATH"] = str(Path(__file__).parents[1] / "src")
+    r = subprocess.run(
+        [sys.executable, "-m", "spacetrail", "report", str(data), "--since", "0", "--min", "1MB"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=60,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "Документы" in r.stdout.decode("utf-8")
+
+
+def test_report_json(tmp_path, monkeypatch, capsysbinary):
+    data = _two_snaps_with_growth(tmp_path, monkeypatch, "Документы")
+    capsysbinary.readouterr()
+    assert main(["report", str(data), "--since", "0", "--min", "1MB", "--json"]) == 0
+    doc = json.loads(capsysbinary.readouterr().out.decode("utf-8"))
+    (rep,) = doc["reports"]
+    assert rep["status"] == "ok" and rep["path"] == str(data)
+    assert rep["grew"][0]["path"] == str(data / "Документы")
+    assert rep["grew"][0]["change"] == 3 * 1024 * 1024

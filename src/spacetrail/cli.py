@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -132,13 +133,100 @@ def cmd_snap(args, store: Store) -> int:
     return 0
 
 
+def _compare(store: Store, root: str, focus: str, args) -> dict:
+    """Everything one report section needs, for both the text and the --json output."""
+    out = {"root": root, "path": focus}
+    pair = pick_baseline(store.snapshots(root), args.since)
+    if pair is None:
+        return {**out, "status": "one_snapshot"}
+    old, new = pair
+    before = _rebase(store.sizes(old.id), old.root, new.root)
+    after = store.sizes(new.id)
+    # `report C:\Users\me` drills into a snapshot of C:\ and shows only what's below it.
+    shown = next((p for d in (after, before) for p in d if path_key(p) == path_key(focus)), None)
+    if shown is None:
+        return {**out, "status": "not_stored"}
+    before = {p: n for p, n in before.items() if is_within(p, shown)}
+    after = {p: n for p, n in after.items() if is_within(p, shown)}
+    ch = changes(before, after)
+    ch.pop(shown, None)  # the total is already in the header line
+    return {
+        **out, "path": shown, "status": "ok", "old": old, "new": new,
+        "size": after.get(shown, 0), "change": after.get(shown, 0) - before.get(shown, 0),
+        "grew": culprits(ch, args.min, args.top, growing=True),
+        "shrank": culprits(ch, args.min, args.top, growing=False),
+    }
+
+
+def _print_report(r: dict, args, s: Style) -> None:
+    if r["status"] == "one_snapshot":
+        print(f"{s.bold(r['root'])}: only one snapshot so far. Run `spacetrail snap` again later "
+              "or `spacetrail schedule`.")
+        return
+    if r["status"] == "not_stored":
+        print(f"{s.bold(r['path'])}: not in the snapshots of {r['root']}. spacetrail only remembers "
+              "folders over 1 MB, a few levels deep (see --depth).")
+        return
+    old, new = r["old"], r["new"]
+    print(s.bold(r["path"]) + s.dim(f"   {_when(old.taken)}  ->  {_when(new.taken)}"))
+    line = f"  folder size {human(r['size'])} ({human(r['change'], signed=True)})"
+    if old.disk_free is not None and new.disk_free is not None:
+        line += f"   free space {human(old.disk_free)} -> {human(new.disk_free)}"
+    print(line + "\n")
+    grew, shrank = r["grew"], r["shrank"]
+    if grew:
+        print(s.yellow("  Grew"))
+        _print_rows(grew, r["path"], s, growing=True)
+    if shrank:
+        print(("\n" if grew else "") + s.yellow("  Shrank"))
+        _print_rows(shrank, r["path"], s, growing=False)
+    if not grew and not shrank:
+        print(f"  Nothing changed by more than {human(args.min)}.")
+    print()
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts).isoformat(timespec="seconds")
+
+
+def _report_json(r: dict) -> dict:
+    if r["status"] != "ok":
+        return {"root": r["root"], "path": r["path"], "status": r["status"]}
+    old, new = r["old"], r["new"]
+    rows = lambda rows: [{"path": c.path, "change": c.delta, "before": c.before, "after": c.after}
+                         for c in rows]
+    return {
+        "root": r["root"], "path": r["path"], "status": "ok",
+        "from": _iso(old.taken), "to": _iso(new.taken),
+        "size": r["size"], "change": r["change"],
+        "free_before": old.disk_free, "free_after": new.disk_free,
+        "grew": rows(r["grew"]), "shrank": rows(r["shrank"]),
+    }
+
+
+def _emit_json(data) -> None:
+    text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    out = sys.stdout
+    if hasattr(out, "buffer"):  # always UTF-8, whatever the console code page is
+        out.flush()
+        out.buffer.write(text.encode("utf-8"))
+        out.buffer.flush()
+    else:
+        out.write(text)
+
+
 def cmd_report(args, store: Store) -> int:
     s = _style()
+    as_json = getattr(args, "json", False)
     if getattr(args, "fresh", False):
         cmd_snap(argparse.Namespace(paths=[args.path] if args.path else [], depth=args.depth,
-                                    keep=args.keep, quiet=False), store)
+                                    keep=args.keep, quiet=as_json), store)
     if not store.roots():
         root = os.path.abspath(args.path) if args.path else default_root()
+        if as_json:
+            cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=True), store)
+            _emit_json({"reports": [{"root": root, "path": root, "status": "first_snapshot"}]})
+            return 0
         print(f"No snapshots yet. Taking the first one of {root} now...\n")
         cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=False), store)
         print("\nThat's the starting point. To see what grows, take another snapshot later,\n"
@@ -156,45 +244,12 @@ def cmd_report(args, store: Store) -> int:
     else:
         targets = [(root, root) for root in store.roots()]
 
-    days, min_bytes = args.since, args.min
-    for root, focus in targets:
-        pair = pick_baseline(store.snapshots(root), days)
-        if pair is None:
-            print(f"{s.bold(root)}: only one snapshot so far. Run `spacetrail snap` again later "
-                  "or `spacetrail schedule`.")
-            continue
-        old, new = pair
-        before = _rebase(store.sizes(old.id), old.root, new.root)
-        after = store.sizes(new.id)
-        # `report C:\Users\me` drills into a snapshot of C:\ and shows only what's below it.
-        shown = next((p for d in (after, before) for p in d if path_key(p) == path_key(focus)), None)
-        if shown is None:
-            print(f"{s.bold(focus)}: not in the snapshots of {root}. spacetrail only remembers folders "
-                  "over 1 MB, a few levels deep (see --depth).")
-            continue
-        before = {p: n for p, n in before.items() if is_within(p, shown)}
-        after = {p: n for p, n in after.items() if is_within(p, shown)}
-        ch = changes(before, after)
-        ch.pop(shown, None)  # the total is already in the header line
-        print(s.bold(shown) + s.dim(f"   {_when(old.taken)}  ->  {_when(new.taken)}"))
-        new_size = after.get(shown, 0)
-        total = new_size - before.get(shown, 0)
-        line = f"  folder size {human(new_size)} ({human(total, signed=True)})"
-        if old.disk_free is not None and new.disk_free is not None:
-            line += f"   free space {human(old.disk_free)} -> {human(new.disk_free)}"
-        print(line + "\n")
-
-        grew = culprits(ch, min_bytes, args.top, growing=True)
-        shrank = culprits(ch, min_bytes, args.top, growing=False)
-        if grew:
-            print(s.yellow("  Grew"))
-            _print_rows(grew, shown, s, growing=True)
-        if shrank:
-            print(("\n" if grew else "") + s.yellow("  Shrank"))
-            _print_rows(shrank, shown, s, growing=False)
-        if not grew and not shrank:
-            print(f"  Nothing changed by more than {human(min_bytes)}.")
-        print()
+    reports = [_compare(store, root, focus, args) for root, focus in targets]
+    if as_json:
+        _emit_json({"reports": [_report_json(r) for r in reports]})
+    else:
+        for r in reports:
+            _print_report(r, args, s)
     return 0
 
 
@@ -247,13 +302,24 @@ def _positive(kind):
 def _fix_streams() -> None:
     # pythonw.exe (the daily task) starts us with no console at all: sys.stdout and
     # sys.stderr are None, and the first print would crash the snapshot.
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, "w", encoding="utf-8")
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, "w", encoding="utf-8")
-    enc = getattr(sys.stdout, "encoding", None)
-    if enc and enc.lower() not in ("utf-8", "utf8") and hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(errors="replace")
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name)
+        if stream is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+            continue
+        enc = (getattr(stream, "encoding", None) or "").lower().replace("_", "-")
+        if enc in ("utf-8", "utf8") or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            tty = stream.isatty()
+        except (OSError, ValueError):
+            tty = True
+        # Piped or redirected output gets UTF-8, so folder names like "Документы" survive
+        # instead of turning into "?????????". PYTHONIOENCODING still wins if it's set.
+        if not tty and not os.environ.get("PYTHONIOENCODING"):
+            stream.reconfigure(encoding="utf-8")
+        else:
+            stream.reconfigure(errors="replace")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -279,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="ignore changes smaller than this (default 100MB)")
     rp.add_argument("--top", type=_positive(int), default=12, help="rows per list (default 12)")
     rp.add_argument("--fresh", action="store_true", help="take a new snapshot first")
+    rp.add_argument("--json", action="store_true", help="print the report as JSON (UTF-8)")
     common(rp)
 
     sp = sub.add_parser("snap", help="take a snapshot now")
