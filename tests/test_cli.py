@@ -289,3 +289,19 @@ def test_top_lists_biggest_with_hints(tmp_path, monkeypatch, capsys):
     assert top["path"] == str(data / "site")
     assert [f["path"] for f in top["folders"]] == [str(data / "site" / "node_modules")]
     assert "npm install" in top["folders"][0]["hint"]
+
+
+@pytest.mark.parametrize("command", ["report", "top"])
+def test_fresh_rescans_tracked_folders_only(command, tmp_path, monkeypatch, capsys):
+    db = tmp_path / "db.sqlite"
+    monkeypatch.setenv("SPACETRAIL_DB", str(db))
+    data, system = tmp_path / "data", tmp_path / "system"
+    (data / "sub").mkdir(parents=True)
+    system.mkdir()
+    monkeypatch.setattr(cli, "default_root", lambda: str(system))
+    assert main(["snap", "--quiet", str(data)]) == 0
+    assert main([command, "--fresh"]) == 0
+    assert main([command, "--fresh", str(data / "sub")]) == 0
+    store = Store(db)
+    assert store.roots() == [str(data)] and len(store.snapshots()) == 3
+    store.close()

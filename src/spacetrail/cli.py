@@ -268,8 +268,10 @@ def cmd_report(args, store: Store) -> int:
     s = _style()
     as_json = getattr(args, "json", False)
     if getattr(args, "fresh", False):
-        cmd_snap(argparse.Namespace(paths=[args.path] if args.path else [], depth=args.depth,
-                                    keep=args.keep, quiet=as_json), store)
+        code = cmd_snap(argparse.Namespace(paths=_fresh_paths(args, store), depth=args.depth,
+                                           keep=args.keep, quiet=as_json), store)
+        if code:
+            return code
     if not store.roots():
         root = os.path.abspath(args.path) if args.path else default_root()
         if as_json:
@@ -300,6 +302,14 @@ def cmd_report(args, store: Store) -> int:
     return 0
 
 
+def _fresh_paths(args, store: Store) -> list[str]:
+    """What --fresh rescans: the tracked folders, not C:\\ when you only ever snapped D:\\."""
+    if args.path:
+        focus = os.path.abspath(args.path)
+        return [store.root_for(focus) or focus]  # a subfolder rescans its whole snapshot root
+    return store.roots() or [default_root()]
+
+
 def _targets(args, store: Store) -> list[tuple[str, str]] | None:
     """(snapshot root, folder to show) pairs, or None after explaining an unknown path."""
     if not args.path:
@@ -317,7 +327,7 @@ def cmd_top(args, store: Store) -> int:
     s = _style()
     as_json = getattr(args, "json", False)
     if args.fresh or not store.roots():
-        paths = [args.path] if args.path else []
+        paths = _fresh_paths(args, store)
         if not store.roots() and not as_json:
             print(f"No snapshots yet. Taking the first one of {os.path.abspath(args.path or default_root())} now...\n")
         code = cmd_snap(argparse.Namespace(paths=paths, depth=args.depth, keep=args.keep, quiet=as_json), store)
