@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from spacetrail import schedule
+from spacetrail import cli, schedule
 from spacetrail.cli import main
 from spacetrail.store import Store
 
@@ -28,13 +28,13 @@ def test_task_xml_runs_at_given_time():
     xml = schedule._task_xml(["C:\\"], "08:05")
     assert "T08:05:00" in xml
     assert "<StartWhenAvailable>true</StartWhenAvailable>" in xml
-    assert "snap --quiet C:\\" in xml
+    assert "snap --scheduled C:\\" in xml
 
 
 def test_cron_line():
     line = schedule._cron_line(["/home/me"], "08:05")
     assert line.startswith("5 8 * * * ")
-    assert line.endswith("snap --quiet /home/me # spacetrail")
+    assert line.endswith("snap --scheduled /home/me # spacetrail")
 
 
 def test_snap_without_console_streams(tmp_path, monkeypatch):
@@ -133,3 +133,18 @@ def test_schtasks_failure_shows_its_message(tmp_path, monkeypatch, capsys):
     assert main(["schedule", str(tmp_path)]) == 1
     err = capsys.readouterr().err
     assert "Access is denied" in err and "Traceback" not in err
+
+
+@pytest.mark.parametrize("flag, console_is_ours, hidden", [
+    ("--quiet", False, False),     # typed in a terminal: leave the terminal alone
+    ("--quiet", True, True),       # a daily task from 0.2.x
+    ("--scheduled", False, True),  # a daily task from now on
+])
+def test_only_scheduled_runs_hide_the_console(flag, console_is_ours, hidden, tmp_path, monkeypatch):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    calls = []
+    monkeypatch.setattr(cli, "_console_is_ours", lambda: console_is_ours)
+    monkeypatch.setattr(cli, "_hide_console", lambda: calls.append("hide"))
+    monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: calls.append("pause"))
+    assert main(["snap", flag, str(tmp_path)]) == 0
+    assert calls == (["hide"] if hidden else ["pause"])

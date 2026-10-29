@@ -282,7 +282,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sp = sub.add_parser("snap", help="take a snapshot now")
     sp.add_argument("paths", nargs="*", help=f"folders to scan (default {default_root()})")
-    sp.add_argument("--quiet", action="store_true")
+    sp.add_argument("--quiet", action="store_true", help="print nothing")
+    sp.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the daily task
     common(sp)
 
     sub.add_parser("list", help="list saved snapshots")
@@ -301,8 +302,14 @@ def main(argv: list[str] | None = None) -> int:
 
     handlers = {"report": cmd_report, "snap": cmd_snap, "list": cmd_list,
                 "schedule": cmd_schedule, "unschedule": cmd_unschedule}
-    if args.cmd == "snap" and args.quiet:
-        _hide_console()
+    hidden = False
+    if args.cmd == "snap":
+        args.quiet = args.quiet or args.scheduled
+        # Tasks from 0.2 run `snap --quiet`. Hiding is only safe when the console is ours
+        # alone; a typed `snap --quiet` must not make the user's terminal vanish.
+        hidden = args.scheduled or (args.quiet and _console_is_ours())
+        if hidden:
+            _hide_console()
     store = Store()
     try:
         return handlers[args.cmd](args, store)
@@ -313,11 +320,23 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     finally:
         store.close()
-        _pause_if_double_clicked()
+        if not hidden:  # nobody could press Enter in a hidden window
+            _pause_if_double_clicked()
 
 
 def _is_windows_exe() -> bool:
     return sys.platform == "win32" and getattr(sys, "frozen", False)
+
+
+def _console_is_ours() -> bool:
+    # Double-clicking spacetrail.exe (or the daily task) opens a console just for us.
+    # If we're the only process attached to it, nobody started us from a terminal.
+    if not _is_windows_exe():
+        return False
+    import ctypes
+
+    procs = (ctypes.c_uint32 * 2)()
+    return ctypes.windll.kernel32.GetConsoleProcessList(procs, 2) == 1
 
 
 def _hide_console() -> None:
@@ -329,12 +348,6 @@ def _hide_console() -> None:
 
 
 def _pause_if_double_clicked() -> None:
-    # Double-clicking spacetrail.exe opens a console that closes as soon as we return.
-    # If we're the only process attached to it, nobody started us from a terminal.
-    if not _is_windows_exe():
-        return
-    import ctypes
-
-    procs = (ctypes.c_uint32 * 2)()
-    if ctypes.windll.kernel32.GetConsoleProcessList(procs, 2) == 1:
+    # That console closes as soon as we return, taking the output with it.
+    if _console_is_ours():
         input("\nPress Enter to close.")

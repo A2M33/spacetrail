@@ -25,7 +25,7 @@ def _python() -> str:
 
 def _args(paths: list[str]) -> list[str]:
     prefix = [] if getattr(sys, "frozen", False) else ["-m", "spacetrail"]
-    return [*prefix, "snap", "--quiet", *paths]
+    return [*prefix, "snap", "--scheduled", *paths]
 
 
 def _task_xml(paths: list[str], time: str) -> str:
