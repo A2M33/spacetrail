@@ -8,6 +8,7 @@ import pytest
 
 from spacetrail import cli, schedule
 from spacetrail.cli import main
+from spacetrail.report import Change
 from spacetrail.store import Store
 
 
@@ -210,3 +211,25 @@ def test_changing_depth_does_not_invent_growth(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert main(["report", str(data), "--since", "0", "--min", "1MB"]) == 0
     assert "Nothing changed" in capsys.readouterr().out
+
+
+def test_rows_say_new_and_deleted_and_line_up(capsys):
+    root = os.path.abspath("r")
+    rows = [
+        Change(os.path.join(root, "fresh"), 3 * 1024**3, 0, 3 * 1024**3),
+        Change(os.path.join(root, "a", "much", "deeper", "folder"), 200 * 1024**2, 1024**2, 201 * 1024**2),
+        Change(os.path.join(root, "gone"), -5 * 1024**2, 5 * 1024**2, 0),
+    ]
+    cli._print_rows(rows, root, cli.Style(False), growing=True)
+    lines = capsys.readouterr().out.splitlines()
+    assert "new -> 3.0 GB" in lines[0] and "5.0 MB -> deleted" in lines[2]
+    assert "<1 MB" not in "".join(lines)
+    starts = {len(line) - len(cli._short(c.path, root)) for line, c in zip(lines, rows)}
+    assert len(starts) == 1  # every path starts in the same column
+
+
+def test_no_color_wins(monkeypatch):
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert cli._style().on
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert not cli._style().on

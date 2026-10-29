@@ -40,9 +40,11 @@ class Style:
 
 
 def _style() -> Style:
+    if os.environ.get("NO_COLOR"):  # https://no-color.org
+        return Style(False)
     if os.environ.get("FORCE_COLOR"):
         return Style(True)
-    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+    if not sys.stdout.isatty():
         return Style(False)
     if sys.platform == "win32":
         # Old Windows consoles need ANSI colours switched on explicitly.
@@ -87,21 +89,22 @@ def _bar_char() -> str:
         return "#"
 
 
-def _bar(value: int, biggest: int, width: int = 20) -> str:
+def _bar(value: int, biggest: int, width: int = 10) -> str:
     n = max(1, round(width * value / biggest)) if biggest else 0
     return _bar_char() * n + " " * (width - n)
 
 
 def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
+    # Fixed-width columns first and the path last, so every path starts in the same column.
     biggest = max(abs(c.delta) for c in rows)
+    color = s.red if growing else s.green
     for c in rows:
-        size = human(c.delta, signed=True).rjust(11)
-        # Folders under 1 MB aren't stored, so 0 really means "less than 1 MB".
-        before = human(c.before) if c.before else "<1 MB"
-        after = human(c.after) if c.after else "<1 MB"
-        color = s.red if growing else s.green
-        print(f"  {color(size)}  {s.dim(_bar(abs(c.delta), biggest))}  {_short(c.path, root)}"
-              f"  {s.dim(f'{before} -> {after}')}")
+        size = human(c.delta, signed=True).rjust(10)
+        # Folders under 1 MB aren't stored: a 0 means it appeared or went away.
+        before = human(c.before) if c.before else "new"
+        after = human(c.after) if c.after else "deleted"
+        sizes = f"{before:>9} -> {after:<9}"
+        print(f"  {color(size)}  {color(_bar(abs(c.delta), biggest))}  {s.dim(sizes)}  {_short(c.path, root)}")
 
 
 # ---------- commands ----------
