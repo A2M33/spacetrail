@@ -12,7 +12,7 @@ from datetime import datetime
 from . import __version__, schedule
 from .report import Change, changes, culprits, human, parse_days, parse_size, pick_baseline
 from .scan import scan
-from .store import Store, default_db
+from .store import Store, default_db, is_within, path_key
 
 
 def default_root() -> str:
@@ -67,6 +67,13 @@ def _when(ts: float) -> str:
 def _short(path: str, root: str) -> str:
     rel = os.path.relpath(path, root)
     return root if rel == "." else rel
+
+
+def _rebase(sizes: dict[str, int], old_root: str, new_root: str) -> dict[str, int]:
+    # Two snapshots of C:\Users and c:\users: spell the old paths like the new ones.
+    if old_root == new_root:
+        return sizes
+    return {new_root + p[len(old_root):]: n for p, n in sizes.items()}
 
 
 def _bar_char() -> str:
@@ -129,28 +136,48 @@ def cmd_report(args, store: Store) -> int:
     if getattr(args, "fresh", False):
         cmd_snap(argparse.Namespace(paths=[args.path] if args.path else [], depth=args.depth,
                                     keep=args.keep, quiet=False), store)
-    roots = [os.path.abspath(args.path)] if args.path else store.roots()
-    if not roots:
-        root = default_root()
+    if not store.roots():
+        root = os.path.abspath(args.path) if args.path else default_root()
         print(f"No snapshots yet. Taking the first one of {root} now...\n")
         cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=False), store)
         print("\nThat's the starting point. To see what grows, take another snapshot later,\n"
               "or let spacetrail do it daily:  spacetrail schedule")
         return 0
 
+    if args.path:
+        focus = os.path.abspath(args.path)
+        root = store.root_for(focus)
+        if root is None:
+            print(f"No snapshots of {focus} yet. Take one with:  spacetrail snap \"{focus}\"\n"
+                  f"Folders with snapshots: {', '.join(store.roots())}", file=sys.stderr)
+            return 1
+        targets = [(root, focus)]
+    else:
+        targets = [(root, root) for root in store.roots()]
+
     days, min_bytes = parse_days(args.since), parse_size(args.min)
-    for root in roots:
+    for root, focus in targets:
         pair = pick_baseline(store.snapshots(root), days)
         if pair is None:
             print(f"{s.bold(root)}: only one snapshot so far. Run `spacetrail snap` again later "
                   "or `spacetrail schedule`.")
             continue
         old, new = pair
-        ch = changes(store.sizes(old.id), store.sizes(new.id))
-        ch.pop(root, None)  # the total is already in the header line
-        print(s.bold(root) + s.dim(f"   {_when(old.taken)}  ->  {_when(new.taken)}"))
-        total = new_size = store.sizes(new.id).get(root, 0)
-        total -= store.sizes(old.id).get(root, 0)
+        before = _rebase(store.sizes(old.id), old.root, new.root)
+        after = store.sizes(new.id)
+        # `report C:\Users\me` drills into a snapshot of C:\ and shows only what's below it.
+        shown = next((p for d in (after, before) for p in d if path_key(p) == path_key(focus)), None)
+        if shown is None:
+            print(f"{s.bold(focus)}: not in the snapshots of {root}. spacetrail only remembers folders "
+                  "over 1 MB, a few levels deep (see --depth).")
+            continue
+        before = {p: n for p, n in before.items() if is_within(p, shown)}
+        after = {p: n for p, n in after.items() if is_within(p, shown)}
+        ch = changes(before, after)
+        ch.pop(shown, None)  # the total is already in the header line
+        print(s.bold(shown) + s.dim(f"   {_when(old.taken)}  ->  {_when(new.taken)}"))
+        new_size = after.get(shown, 0)
+        total = new_size - before.get(shown, 0)
         line = f"  folder size {human(new_size)} ({human(total, signed=True)})"
         if old.disk_free is not None and new.disk_free is not None:
             line += f"   free space {human(old.disk_free)} -> {human(new.disk_free)}"
@@ -160,10 +187,10 @@ def cmd_report(args, store: Store) -> int:
         shrank = culprits(ch, min_bytes, args.top, growing=False)
         if grew:
             print(s.yellow("  Grew"))
-            _print_rows(grew, root, s, growing=True)
+            _print_rows(grew, shown, s, growing=True)
         if shrank:
             print(("\n" if grew else "") + s.yellow("  Shrank"))
-            _print_rows(shrank, root, s, growing=False)
+            _print_rows(shrank, shown, s, growing=False)
         if not grew and not shrank:
             print(f"  Nothing changed by more than {human(min_bytes)}.")
         print()

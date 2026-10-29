@@ -39,6 +39,17 @@ class Snapshot:
     disk_total: int | None
 
 
+def path_key(path: str) -> str:
+    """Compare paths the way the OS does: C:\\Users and c:\\users are one folder on Windows."""
+    return os.path.normcase(os.path.normpath(path))
+
+
+def is_within(path: str, folder: str) -> bool:
+    """True for `folder` itself and anything below it."""
+    p, f = path_key(path), path_key(folder)
+    return p == f or p.startswith(f if f.endswith(os.sep) else f + os.sep)
+
+
 def data_dir() -> Path:
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
@@ -85,15 +96,22 @@ class Store:
         return Snapshot(sid, result.root, taken, result.files, free, total)
 
     def snapshots(self, root: str | None = None) -> list[Snapshot]:
-        sql = "SELECT id, root, taken, files, disk_free, disk_total FROM snapshot"
-        args: tuple = ()
+        sql = "SELECT id, root, taken, files, disk_free, disk_total FROM snapshot ORDER BY taken"
+        snaps = [Snapshot(*row) for row in self.db.execute(sql)]
         if root:
-            sql += " WHERE root = ?"
-            args = (root,)
-        return [Snapshot(*row) for row in self.db.execute(sql + " ORDER BY taken", args)]
+            key = path_key(root)
+            snaps = [s for s in snaps if path_key(s.root) == key]
+        return snaps
 
     def roots(self) -> list[str]:
-        return [r for (r,) in self.db.execute("SELECT DISTINCT root FROM snapshot ORDER BY root")]
+        """Snapshot roots, spelled as in their newest snapshot."""
+        latest = {path_key(s.root): s.root for s in self.snapshots()}
+        return sorted(latest.values(), key=path_key)
+
+    def root_for(self, path: str) -> str | None:
+        """The snapshot root that is `path` or contains it (the closest one wins)."""
+        found = [r for r in self.roots() if is_within(path, r)]
+        return max(found, key=len) if found else None
 
     def sizes(self, snapshot_id: int) -> dict[str, int]:
         return dict(self.db.execute("SELECT path, size FROM folder WHERE snapshot = ?", (snapshot_id,)))

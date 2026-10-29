@@ -1,5 +1,7 @@
 import sys
 
+import pytest
+
 from spacetrail import schedule
 from spacetrail.cli import main
 from spacetrail.store import Store
@@ -48,3 +50,50 @@ def test_snap_without_console_streams(tmp_path, monkeypatch):
     store = Store(db)
     assert len(store.snapshots()) == 2
     store.close()
+
+
+def _grow(path, mb):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x" * mb * 1024 * 1024)
+
+
+def test_report_unknown_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data, other = tmp_path / "data", tmp_path / "other"
+    data.mkdir()
+    other.mkdir()
+    assert main(["snap", str(data)]) == 0
+    capsys.readouterr()
+    assert main(["report", str(other)]) == 1
+    err = capsys.readouterr().err
+    assert "No snapshots of" in err and str(data) in err
+
+
+def test_report_drills_into_subfolder(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    (data / "a").mkdir(parents=True)
+    (data / "b").mkdir()
+    assert main(["snap", str(data)]) == 0
+    _grow(data / "a" / "sub" / "big.bin", 3)
+    _grow(data / "b" / "other.bin", 2)
+    assert main(["snap", str(data)]) == 0
+    capsys.readouterr()
+    assert main(["report", str(data / "a"), "--since", "0", "--min", "1MB"]) == 0
+    out = capsys.readouterr().out
+    assert str(data / "a") in out and "sub" in out and "+3.0 MB" in out
+    assert "+2.0 MB" not in out and "+5.0 MB" not in out
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="paths are case-sensitive here")
+def test_report_path_ignores_case_on_windows(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    data.mkdir()
+    assert main(["snap", str(data)]) == 0
+    _grow(data / "dl" / "big.bin", 3)
+    assert main(["snap", str(data).upper()]) == 0
+    capsys.readouterr()
+    assert main(["report", str(data).lower(), "--since", "0", "--min", "1MB"]) == 0
+    out = capsys.readouterr().out
+    assert "only one snapshot" not in out and "+3.0 MB" in out
