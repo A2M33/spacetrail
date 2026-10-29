@@ -78,6 +78,17 @@ def culprits(all_changes: dict[str, Change], min_bytes: int, limit: int, growing
     return picked[:limit]
 
 
+def biggest(sizes: dict[str, int], root: str, limit: int) -> list[Change]:
+    """The most specific big folders right now: the same rule as culprits(), growing from zero.
+
+    Only subfolders over 1% of the root count as an explanation, so node_modules with
+    thousands of small packages stays on the list instead of vanishing into its children.
+    """
+    grown = changes({}, sizes)
+    grown.pop(root, None)
+    return culprits(grown, max(1, sizes.get(root, 0) // 100), limit)
+
+
 def human(n: int, signed: bool = False) -> str:
     sign = ("+" if n > 0 else "-" if n < 0 else "") if signed else ("-" if n < 0 else "")
     n = abs(n)

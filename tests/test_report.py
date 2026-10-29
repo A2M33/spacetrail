@@ -3,7 +3,7 @@ import os
 import pytest
 
 from spacetrail.report import (
-    changes, culprits, deepest, human, level, parse_days, parse_size, pick_baseline, trim,
+    biggest, changes, culprits, deepest, human, level, parse_days, parse_size, pick_baseline, trim,
 )
 from spacetrail.store import Snapshot
 
@@ -91,3 +91,9 @@ def test_trim_to_shallower_depth():
     assert trim(sizes, r, 1) == {r: 9, a: 9}
     root = os.path.abspath(os.sep)  # C:\ or /
     assert level(root, root) == 0 and level(os.path.join(root, "x"), root) == 1
+
+
+def test_biggest_keeps_folder_made_of_many_small_ones():
+    sizes = {"/": 100 * GB, "/a": 60 * GB, "/a/x": 59 * GB, "/nm": 30 * GB}
+    sizes.update({f"/nm/p{i}": GB // 4 for i in range(120)})  # each under 1% of the drive
+    assert [c.path for c in biggest(sizes, "/", 2)] == ["/a/x", "/nm"]

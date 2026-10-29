@@ -233,3 +233,36 @@ def test_no_color_wins(monkeypatch):
     assert cli._style().on
     monkeypatch.setenv("NO_COLOR", "1")
     assert not cli._style().on
+
+
+def _first_run(tmp_path, monkeypatch, double_clicked, answer="", installed=False):
+    monkeypatch.setenv("SPACETRAIL_DB", str(tmp_path / "db.sqlite"))
+    data = tmp_path / "data"
+    _grow(data / "games" / "big.bin", 5)
+    _grow(data / "docs" / "small.bin", 2)
+    monkeypatch.setattr(cli, "default_root", lambda: str(data))
+    monkeypatch.setattr(cli, "_console_is_ours", lambda: double_clicked)
+    monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: None)
+    monkeypatch.setattr(schedule, "is_installed", lambda: installed)
+    monkeypatch.setattr("builtins.input", lambda prompt="": answer)
+    scheduled = []
+    monkeypatch.setattr(schedule, "install", lambda paths, time="12:30": scheduled.append(paths) or "ok")
+    assert main([]) == 0
+    return data, scheduled
+
+
+def test_first_run_lists_biggest_folders(tmp_path, monkeypatch, capsys):
+    data, scheduled = _first_run(tmp_path, monkeypatch, double_clicked=False)
+    out = capsys.readouterr().out
+    assert "Biggest folders" in out and "spacetrail schedule" in out
+    rows = out[out.index("Biggest folders"):].splitlines()[1:3]
+    assert "5.0 MB" in rows[0] and "games" in rows[0] and "docs" in rows[1]
+    assert scheduled == []
+
+
+@pytest.mark.parametrize("answer, installed, expect", [
+    ("", False, True), ("y", False, True), ("n", False, False), ("", True, False),
+])
+def test_double_clicked_first_run_offers_daily_snapshots(answer, installed, expect, tmp_path, monkeypatch):
+    data, scheduled = _first_run(tmp_path, monkeypatch, double_clicked=True, answer=answer, installed=installed)
+    assert scheduled == ([[str(data)]] if expect else [])

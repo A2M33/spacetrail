@@ -12,7 +12,9 @@ import traceback
 from datetime import datetime
 
 from . import __version__, schedule
-from .report import Change, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim
+from .report import (
+    Change, biggest, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim,
+)
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -105,6 +107,33 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
         print(f"  {color(size)}  {color(_bar(abs(c.delta), biggest))}  {s.dim(sizes)}  {_short(c.path, root)}")
+
+
+def _print_biggest(rows: list[Change], root: str, s: Style) -> None:
+    if not rows:
+        print("  No folders over 1 MB.")
+        return
+    top = rows[0].after
+    for c in rows:
+        print(f"  {s.bold(human(c.after).rjust(10))}  {s.dim(_bar(c.after, top))}  {_short(c.path, root)}")
+
+
+def _offer_schedule(root: str) -> bool:
+    """Double-clicked exe: nobody will type `spacetrail schedule`, so ask instead."""
+    if not _console_is_ours() or schedule.is_installed():
+        return False
+    try:
+        answer = input("\nTake a snapshot every day? [Y/n] ").strip().lower()
+    except EOFError:
+        return False
+    if answer not in ("", "y", "yes"):
+        print("OK. You can turn it on later with:  spacetrail schedule")
+        return True
+    try:
+        print(schedule.install([root]))
+    except RuntimeError as e:
+        print(f"Couldn't schedule it: {e}", file=sys.stderr)
+    return True
 
 
 # ---------- commands ----------
@@ -238,9 +267,15 @@ def cmd_report(args, store: Store) -> int:
             _emit_json({"reports": [{"root": root, "path": root, "status": "first_snapshot"}]})
             return 0
         print(f"No snapshots yet. Taking the first one of {root} now...\n")
-        cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=False), store)
-        print("\nThat's the starting point. To see what grows, take another snapshot later,\n"
-              "or let spacetrail do it daily:  spacetrail schedule")
+        code = cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=False), store)
+        if code:
+            return code
+        snap = store.snapshots(root)[-1]
+        print("\n" + s.yellow("  Biggest folders right now"))
+        _print_biggest(biggest(store.sizes(snap.id), snap.root, 10), snap.root, s)
+        print("\nThat's the starting point. To see what grows, spacetrail needs a second snapshot later.")
+        if not _offer_schedule(root):
+            print("Let spacetrail take one every day:  spacetrail schedule")
         return 0
 
     if args.path:

@@ -89,6 +89,13 @@ def install(paths: list[str], time: str = "12:30") -> str:
     return f"cron will take a snapshot every day at {time}."
 
 
+def is_installed() -> bool:
+    if sys.platform == "win32":
+        r = subprocess.run(["schtasks", "/Query", "/TN", TASK], capture_output=True, text=True, errors="replace")
+        return r.returncode == 0
+    return any(CRON_TAG in line for line in _crontab()) if shutil.which("crontab") else False
+
+
 def uninstall() -> str:
     if sys.platform == "win32":
         r = subprocess.run(["schtasks", "/Delete", "/TN", TASK, "/F"], capture_output=True, text=True)
