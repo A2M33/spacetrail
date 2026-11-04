@@ -17,7 +17,7 @@ from .report import (
     Change, biggest, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim,
 )
 from .hints import hint
-from .output import Style, bar, make_style
+from .output import Style, bar, cells, fit_path, make_style
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -101,6 +101,34 @@ def _offer_schedule(root: str) -> bool:
     return True
 
 
+class _Progress:
+    """The live file count on stderr while a scan runs, always one line tall."""
+
+    def __init__(self, root: str, enabled: bool) -> None:
+        self.root, self.enabled, self.shown = root, enabled, False
+        self.width = shutil.get_terminal_size((80, 24)).columns - 1
+
+    def __call__(self, files: int) -> None:
+        if not self.enabled:
+            return
+        start, count = "  scanning ", f"  {files:,} files"
+        line = start + fit_path(self.root, max(1, self.width - len(start) - len(count))) + count
+        print("\r" + line + " " * max(0, self.width - cells(line)), end="", file=sys.stderr, flush=True)
+        self.shown = True
+
+    def clear(self) -> None:
+        if self.shown:
+            print("\r" + " " * self.width + "\r", end="", file=sys.stderr, flush=True)
+
+
+def _scan_with_progress(root: str, args):
+    progress = _Progress(root, not args.quiet and sys.stderr.isatty())
+    try:
+        return scan(root, depth=args.depth, progress=progress)
+    finally:  # also after Ctrl+C, or the shell prompt lands on top of the counter
+        progress.clear()
+
+
 # ---------- commands ----------
 
 def cmd_snap(args, store: Store) -> int:
@@ -113,21 +141,13 @@ def cmd_snap(args, store: Store) -> int:
             print(f"Not a folder: {root}", file=sys.stderr)
             code = 2
             continue
-        show = not args.quiet and sys.stderr.isatty()
         started = time.monotonic()
-
-        def progress(files: int) -> None:
-            if show:
-                print(f"\r  scanning {root}  {files:,} files", end="", file=sys.stderr, flush=True)
-
         try:
-            result = scan(root, depth=args.depth, progress=progress)
+            result = _scan_with_progress(root, args)
         except OSError as e:
             print(f"Can't read {root}: {e.strerror or e}", file=sys.stderr)
             code = 2
             continue
-        if show:
-            print("\r" + " " * 70 + "\r", end="", file=sys.stderr)
         usage = shutil.disk_usage(root)
         store.save(result, disk=(usage.free, usage.total))
         store.prune(args.keep)

@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timedelta
 from datetime import time as datetime_time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -210,6 +211,29 @@ def test_when_goes_by_the_calendar():
     assert "(yesterday)" in cli._when(at(1, 23, 59))  # under 24 hours ago on most of the day
     assert "(yesterday)" in cli._when(at(1, 0, 1))
     assert "(2 days ago)" in cli._when(at(2, 23, 59))
+
+
+def test_progress_line_stays_on_one_row_of_a_narrow_terminal(monkeypatch, capsys):
+    monkeypatch.setenv("COLUMNS", "40")
+    progress = cli._Progress("C:\\" + "long folder name\\" * 10 + "end", True)
+    progress(5000)
+    progress(1_234_000)
+    err = capsys.readouterr().err
+    assert all(len(frame) == 39 for frame in err.split("\r")[1:])
+    assert "1,234,000 files" in err and "end" in err
+
+
+def test_ctrl_c_wipes_the_progress_line(tmp_path, monkeypatch, capsys):
+    def scan_then_ctrl_c(root, depth, progress):
+        progress(5000)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "scan", scan_then_ctrl_c)
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    with pytest.raises(KeyboardInterrupt):
+        cli._scan_with_progress(str(tmp_path), SimpleNamespace(quiet=False, depth=6))
+    last_frame = capsys.readouterr().err.split("\r")[-2]
+    assert last_frame.strip() == ""
 
 
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
