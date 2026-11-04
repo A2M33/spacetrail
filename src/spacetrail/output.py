@@ -41,7 +41,7 @@ def make_style() -> Style:
         return Style(False)
     if os.environ.get("FORCE_COLOR"):
         return Style(True)
-    if not sys.stdout.isatty():
+    if not sys.stdout.isatty() or os.environ.get("TERM") == "dumb":
         return Style(False)
     return Style(_windows_ansi_is_on() if sys.platform == "win32" else True)
 

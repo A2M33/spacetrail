@@ -259,6 +259,14 @@ def test_no_color_wins(monkeypatch):
     assert not make_style().on
 
 
+def test_dumb_terminal_gets_no_color(monkeypatch):
+    for name in ("NO_COLOR", "FORCE_COLOR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("TERM", "dumb")
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(isatty=lambda: True))
+    assert not make_style().on
+
+
 @pytest.fixture(autouse=True)
 def _tmp_path_is_not_temp(monkeypatch, tmp_path):
     # pytest's tmp_path lives in %TEMP%, which would put the Temp cleanup hint on every row.
