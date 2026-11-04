@@ -104,8 +104,10 @@ def is_installed() -> bool:
 
 def uninstall() -> str:
     if sys.platform == "win32":
-        r = _capture(["schtasks", "/Delete", "/TN", TASK, "/F"])
-        return "Removed the daily task." if r.returncode == 0 else "There was no daily task."
+        if not is_installed():
+            return "There was no daily task."
+        _run(["schtasks", "/Delete", "/TN", TASK, "/F"], "schtasks")
+        return "Removed the daily task."
     lines = _crontab()
     kept = [line for line in lines if CRON_TAG not in line]
     if len(kept) == len(lines):

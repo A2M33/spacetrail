@@ -151,6 +151,29 @@ def test_empty_variables_count_as_not_set(tmp_path, monkeypatch):
     assert store_module.default_db().is_absolute()  # not ./spacetrail in the current folder
 
 
+def _fake_schtasks(monkeypatch, answers):
+    """Answer each schtasks verb with (exit code, stderr)."""
+    monkeypatch.setattr(schedule.sys, "platform", "win32")
+
+    def run(cmd, **kw):
+        code, err = answers[cmd[1]]
+        return subprocess.CompletedProcess(cmd, code, "", err)
+
+    monkeypatch.setattr(schedule.subprocess, "run", run)
+
+
+def test_unschedule_without_a_task(monkeypatch):
+    _fake_schtasks(monkeypatch, {"/Query": (1, "ERROR: not found")})
+    assert schedule.uninstall() == "There was no daily task."
+
+
+def test_unschedule_says_so_when_windows_refuses(db, monkeypatch, capsys):
+    _fake_schtasks(monkeypatch, {"/Query": (0, ""), "/Delete": (1, "ERROR: Access is denied.")})
+    assert main(["unschedule"]) == 1
+    err = capsys.readouterr().err
+    assert "Access is denied" in err and "no daily task" not in err
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="the oem codec exists only on Windows")
 def test_schtasks_output_with_umlauts_is_decoded(monkeypatch):
     # "ü" in code page 850. As cp1252 this byte has no character and used to end the command.
