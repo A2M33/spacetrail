@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import time
 import traceback
@@ -443,6 +444,13 @@ def _fix_streams() -> None:
             stream.reconfigure(errors="replace")
 
 
+def _database_problem(e: sqlite3.Error) -> str:
+    text = f"can't use the snapshot database {default_db()}: {e}"
+    if "malformed" in str(e) or "not a database" in str(e):
+        text += "\nThe file is damaged. Move it somewhere else and spacetrail starts a new one."
+    return text
+
+
 def main(argv: list[str] | None = None) -> int:
     _fix_streams()
 
@@ -508,10 +516,14 @@ def main(argv: list[str] | None = None) -> int:
             _hide_console()
     store = None
     try:
-        store = Store()
+        if args.cmd not in ("schedule", "unschedule"):  # those work even with a damaged database
+            store = Store()
         return handlers[args.cmd](args, store)
     except KeyboardInterrupt:
         return 130
+    except sqlite3.Error as e:
+        print(f"spacetrail: error: {_database_problem(e)}", file=sys.stderr)
+        return 1
     except RuntimeError as e:  # schtasks or cron said no; their message says why
         print(f"spacetrail: error: {e}", file=sys.stderr)
         return 1

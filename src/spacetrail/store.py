@@ -67,7 +67,10 @@ def default_db() -> Path:
 class Store:
     def __init__(self, path: Path | str | None = None) -> None:
         path = Path(path) if path else default_db()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise sqlite3.OperationalError(f"can't create {path.parent}: {e.strerror}") from e
         self.db = sqlite3.connect(path)
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
