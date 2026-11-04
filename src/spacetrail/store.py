@@ -154,10 +154,9 @@ class Store:
         """Delete old snapshots, but always keep the newest one per folder."""
         now = time.time() if now is None else now
         cutoff = now - keep_days * 86400
+        snaps = self.snapshots()  # oldest first, so the newest one per folder ends up in here
+        newest = {path_key(s.root): s.id for s in snaps}
+        old = [(s.id,) for s in snaps if s.taken < cutoff and s.id != newest[path_key(s.root)]]
         with self.db:
-            cur = self.db.execute(
-                """DELETE FROM snapshot WHERE taken < ? AND id NOT IN
-                   (SELECT id FROM snapshot s WHERE taken = (SELECT MAX(taken) FROM snapshot WHERE root = s.root))""",
-                (cutoff,),
-            )
-        return cur.rowcount
+            self.db.executemany("DELETE FROM snapshot WHERE id = ?", old)
+        return len(old)

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from spacetrail import scan as scan_module
-from spacetrail.scan import scan
+from spacetrail.scan import ScanResult, scan
 from spacetrail.store import Store
 
 
@@ -147,6 +147,17 @@ def test_store_roundtrip_and_prune(tmp_path):
     assert store.sizes(new.id)[r.root] == 10
     assert store.prune(keep_days=30, now=new.taken) == 1
     assert [s.id for s in store.snapshots()] == [new.id]
+    store.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="paths are case-sensitive here")
+def test_prune_treats_two_spellings_as_one_folder(tmp_path):
+    store = Store(tmp_path / "db.sqlite")
+    r = ScanResult(root=r"C:\Data", sizes={r"C:\Data": 1})
+    store.save(r, taken=1_000)
+    newest = store.save(ScanResult(root=r"c:\data", sizes={r"c:\data": 1}), taken=1_000 + 100 * 86400)
+    assert store.prune(keep_days=30, now=newest.taken) == 1
+    assert [s.id for s in store.snapshots()] == [newest.id]
     store.close()
 
 
