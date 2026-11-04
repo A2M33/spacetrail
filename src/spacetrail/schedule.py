@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -118,7 +119,8 @@ def uninstall() -> str:
 
 def _cron_line(paths: list[str], time: str) -> str:
     hour, minute = time.split(":")
-    cmd = " ".join([_python(), *_args(paths)])
+    cmd = " ".join(shlex.quote(a) for a in [_python(), *_args(paths)])
+    cmd = cmd.replace("%", "\\%")  # a bare % ends the command in a crontab
     return f"{int(minute)} {int(hour)} * * * {cmd} {CRON_TAG}"
 
 

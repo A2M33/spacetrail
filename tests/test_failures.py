@@ -188,6 +188,11 @@ def test_uninstall_without_crontab_installed(monkeypatch):
     assert schedule.uninstall() == "There was no cron entry."
 
 
+def test_cron_line_quotes_spaces_and_percent_signs():
+    line = schedule._cron_line(["/home/me/My Files", "/data/100%"], "08:05")
+    assert "'/home/me/My Files'" in line and "/data/100\\%" in line
+
+
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
     def interrupted(*a, **kw):
         raise KeyboardInterrupt
