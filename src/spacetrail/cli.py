@@ -154,11 +154,14 @@ def _offer_schedule(root: str) -> bool:
 
 def cmd_snap(args, store: Store) -> int:
     s = _style()
+    code = 0
     for root in args.paths or [default_root()]:
         root = os.path.abspath(root)
         if not os.path.isdir(root):
+            # Carry on: an unplugged USB drive shouldn't cost C:\ its daily snapshot.
             print(f"Not a folder: {root}", file=sys.stderr)
-            return 2
+            code = 2
+            continue
         show = not args.quiet and sys.stderr.isatty()
         started = time.monotonic()
 
@@ -166,7 +169,12 @@ def cmd_snap(args, store: Store) -> int:
             if show:
                 print(f"\r  scanning {root}  {files:,} files", end="", file=sys.stderr, flush=True)
 
-        result = scan(root, depth=args.depth, progress=progress)
+        try:
+            result = scan(root, depth=args.depth, progress=progress)
+        except OSError as e:
+            print(f"Can't read {root}: {e.strerror or e}", file=sys.stderr)
+            code = 2
+            continue
         if show:
             print("\r" + " " * 70 + "\r", end="", file=sys.stderr)
         usage = shutil.disk_usage(root)
@@ -176,7 +184,7 @@ def cmd_snap(args, store: Store) -> int:
             took = time.monotonic() - started
             print(f"{s.green('Saved')} {root}: {human(result.sizes[root])} in {result.files:,} files "
                   f"({took:.0f}s, {result.skipped} folders not readable)")
-    return 0
+    return code
 
 
 def _compare(store: Store, root: str, focus: str, args) -> dict:

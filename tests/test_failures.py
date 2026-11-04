@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 from spacetrail import cli, schedule
+from spacetrail import scan as scan_module
 from spacetrail.cli import main
+from spacetrail.store import Store
 
 
 @pytest.fixture
@@ -67,6 +69,33 @@ def test_unschedule_works_with_a_damaged_database(db, monkeypatch, capsys):
     monkeypatch.setattr(schedule, "uninstall", lambda: "Removed.")
     assert main(["unschedule"]) == 0
     assert "Removed." in capsys.readouterr().out
+
+
+def test_one_missing_folder_does_not_stop_the_others(tmp_path, db, capsys):
+    data = tmp_path / "data"
+    data.mkdir()
+    assert main(["snap", str(tmp_path / "unplugged"), str(data)]) == 2
+    captured = capsys.readouterr()
+    assert "Not a folder" in captured.err and "Saved" in captured.out
+    store = Store(db)
+    assert store.roots() == [str(data)]
+    store.close()
+
+
+def test_unreadable_folder_saves_no_snapshot(tmp_path, db, monkeypatch, capsys):
+    real = os.scandir
+
+    def denied(path):
+        if str(path) == str(tmp_path):
+            raise PermissionError(13, "Permission denied")
+        return real(path)
+
+    monkeypatch.setattr(scan_module.os, "scandir", denied)
+    assert main(["snap", str(tmp_path)]) == 2
+    assert "Can't read" in capsys.readouterr().err
+    store = Store(db)
+    assert store.snapshots() == []
+    store.close()
 
 
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):

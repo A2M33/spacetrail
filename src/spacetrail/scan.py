@@ -63,6 +63,8 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
         try:
             it = os.scandir(path)
         except OSError:
+            if path == root:  # an empty result would look like everything was deleted
+                raise
             result.skipped += 1
             continue
         with it:
