@@ -63,8 +63,15 @@ def parse_time(text: str) -> str:
     raise ValueError(f"not a time of day: {text!r} (use HH:MM, like 09:00 or 21:30)")
 
 
+def _capture(cmd: list[str], **kw) -> subprocess.CompletedProcess:
+    # schtasks answers in the console's code page. Decoded as anything else, the umlauts in
+    # a German error message come out wrong or stop the whole command.
+    encoding = "oem" if sys.platform == "win32" else None
+    return subprocess.run(cmd, capture_output=True, text=True, encoding=encoding, errors="replace", **kw)
+
+
 def _run(cmd: list[str], what: str, **kw) -> None:
-    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", **kw)
+    r = _capture(cmd, **kw)
     if r.returncode != 0:
         msg = (r.stderr or r.stdout).strip() or f"exit code {r.returncode}"
         raise RuntimeError(f"{what} failed: {msg}")
@@ -91,14 +98,13 @@ def install(paths: list[str], time: str = "12:30") -> str:
 
 def is_installed() -> bool:
     if sys.platform == "win32":
-        r = subprocess.run(["schtasks", "/Query", "/TN", TASK], capture_output=True, text=True, errors="replace")
-        return r.returncode == 0
+        return _capture(["schtasks", "/Query", "/TN", TASK]).returncode == 0
     return any(CRON_TAG in line for line in _crontab()) if shutil.which("crontab") else False
 
 
 def uninstall() -> str:
     if sys.platform == "win32":
-        r = subprocess.run(["schtasks", "/Delete", "/TN", TASK, "/F"], capture_output=True, text=True)
+        r = _capture(["schtasks", "/Delete", "/TN", TASK, "/F"])
         return "Removed the daily task." if r.returncode == 0 else "There was no daily task."
     lines = _crontab()
     kept = [line for line in lines if CRON_TAG not in line]
@@ -115,5 +121,5 @@ def _cron_line(paths: list[str], time: str) -> str:
 
 
 def _crontab() -> list[str]:
-    r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    r = _capture(["crontab", "-l"])
     return r.stdout.splitlines() if r.returncode == 0 else []

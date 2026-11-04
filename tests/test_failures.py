@@ -151,6 +151,14 @@ def test_empty_variables_count_as_not_set(tmp_path, monkeypatch):
     assert store_module.default_db().is_absolute()  # not ./spacetrail in the current folder
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="the oem codec exists only on Windows")
+def test_schtasks_output_with_umlauts_is_decoded(monkeypatch):
+    # "ü" in code page 850. As cp1252 this byte has no character and used to end the command.
+    script = "import sys; sys.stderr.buffer.write(b'F\\x81r den Task'); sys.exit(1)"
+    r = schedule._capture([sys.executable, "-c", script])
+    assert r.returncode == 1 and r.stderr.startswith("F") and r.stderr.endswith("r den Task")
+
+
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
     def interrupted(*a, **kw):
         raise KeyboardInterrupt
