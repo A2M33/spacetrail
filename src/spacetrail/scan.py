@@ -67,25 +67,28 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
                 raise
             result.skipped += 1
             continue
-        with it:
-            for entry in it:
-                try:
-                    if entry.is_dir(follow_symlinks=False):
-                        if _is_link(entry) or entry.path in _SKIP_UNIX:
-                            continue
-                        if sys.platform != "win32" and entry.stat(follow_symlinks=False).st_dev != root_dev:
-                            continue  # another disk mounted inside this one
-                        child_owner = entry.path if level + 1 <= depth else owner
-                        if child_owner == entry.path:
-                            totals[entry.path] = 0
-                        stack.append((entry.path, level + 1, child_owner))
-                    elif entry.is_file(follow_symlinks=False):
-                        totals[owner] += entry.stat(follow_symlinks=False).st_size
-                        result.files += 1
-                        if progress and result.files % 5000 == 0:
-                            progress(result.files)
-                except OSError:
-                    continue
+        try:
+            with it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            if _is_link(entry) or entry.path in _SKIP_UNIX:
+                                continue
+                            if sys.platform != "win32" and entry.stat(follow_symlinks=False).st_dev != root_dev:
+                                continue  # another disk mounted inside this one
+                            child_owner = entry.path if level + 1 <= depth else owner
+                            if child_owner == entry.path:
+                                totals[entry.path] = 0
+                            stack.append((entry.path, level + 1, child_owner))
+                        elif entry.is_file(follow_symlinks=False):
+                            totals[owner] += entry.stat(follow_symlinks=False).st_size
+                            result.files += 1
+                            if progress and result.files % 5000 == 0:
+                                progress(result.files)
+                    except OSError:
+                        continue
+        except OSError:  # the listing itself broke off, like a network drive dropping out
+            result.skipped += 1
 
     # Roll each folder's own bytes up into all of its ancestors.
     for path in sorted(totals, key=len, reverse=True):

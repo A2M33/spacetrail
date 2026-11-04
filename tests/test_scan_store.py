@@ -43,6 +43,37 @@ def test_symlinked_folder_is_not_counted_twice(tmp_path):
     assert r.sizes[str(tmp_path)] == 40
 
 
+class BrokenListing:
+    """A folder listing that fails after its first entry."""
+
+    def __init__(self, listing):
+        self.listing = listing
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.listing.close()
+
+    def __iter__(self):
+        yield next(self.listing)
+        raise OSError(59, "An unexpected network error occurred")
+
+
+def test_listing_that_breaks_off_keeps_the_rest_of_the_scan(tmp_path, monkeypatch):
+    write(tmp_path / "flaky" / "a.bin", 5)
+    write(tmp_path / "fine" / "b.bin", 7)
+    real = os.scandir
+
+    def scandir(path):
+        return BrokenListing(real(path)) if path.endswith("flaky") else real(path)
+
+    monkeypatch.setattr(scan_module.os, "scandir", scandir)
+    r = scan(tmp_path)
+    assert r.skipped == 1
+    assert r.sizes[str(tmp_path / "fine")] == 7 and r.sizes[str(tmp_path)] == 12
+
+
 def test_store_roundtrip_and_prune(tmp_path):
     write(tmp_path / "data" / "f.bin", 10)
     store = Store(tmp_path / "db.sqlite")
