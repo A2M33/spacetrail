@@ -23,6 +23,20 @@ def grow(path, mb):
     path.write_bytes(b"x" * mb * 1024 * 1024)
 
 
+def test_reader_that_leaves_early_is_not_an_error(tmp_path, db):
+    data = tmp_path / "data"
+    grow(data / "sub" / "a.bin", 2)
+    assert main(["snap", "--quiet", str(data)]) == 0
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+    p = subprocess.Popen([sys.executable, "-m", "spacetrail", "top", str(data)], env=env,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p.stdout.close()  # what `spacetrail top | more` does when you quit more
+    err = p.stderr.read()
+    p.stderr.close()
+    assert p.wait(timeout=60) == 0, err
+    assert err == b""
+
+
 @pytest.mark.parametrize("command", ["list", "report", "top", "snap"])
 @pytest.mark.parametrize("damage", ["not_sqlite", "cut_off"])
 def test_damaged_database_gets_a_message_not_a_traceback(command, damage, tmp_path, db, capsys):

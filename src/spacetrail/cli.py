@@ -444,6 +444,17 @@ def _fix_streams() -> None:
             stream.reconfigure(errors="replace")
 
 
+def _reader_left() -> bool:
+    """True if nothing reads our output any more, as after `spacetrail top | more` and q."""
+    try:
+        sys.stdout.flush()
+        return False
+    except OSError:  # BrokenPipeError on Unix, EINVAL on Windows
+        # Python flushes stdout again on exit and would print this same error.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return True
+
+
 def _database_problem(e: sqlite3.Error) -> str:
     text = f"can't use the snapshot database {default_db()}: {e}"
     if "malformed" in str(e) or "not a database" in str(e):
@@ -518,13 +529,20 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd not in ("schedule", "unschedule"):  # those work even with a damaged database
             store = Store()
-        return handlers[args.cmd](args, store)
+        code = handlers[args.cmd](args, store)
+        sys.stdout.flush()
+        return code
     except KeyboardInterrupt:
         return 130
     except sqlite3.Error as e:
         print(f"spacetrail: error: {_database_problem(e)}", file=sys.stderr)
         return 1
     except RuntimeError as e:  # schtasks or cron said no; their message says why
+        print(f"spacetrail: error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        if _reader_left():
+            return 0
         print(f"spacetrail: error: {e}", file=sys.stderr)
         return 1
     except Exception:
