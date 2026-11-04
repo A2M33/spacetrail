@@ -10,7 +10,7 @@ import sqlite3
 import sys
 import time
 import traceback
-from datetime import datetime
+from datetime import date, datetime
 
 from . import __version__, schedule
 from .report import (
@@ -67,8 +67,8 @@ def _style() -> Style:
 
 def _when(ts: float) -> str:
     d = datetime.fromtimestamp(ts)
-    days = (time.time() - ts) / 86400
-    ago = "today" if days < 1 else "yesterday" if days < 2 else f"{days:.0f} days ago"
+    days = (date.today() - d.date()).days  # by the calendar: 23:00 last night is yesterday
+    ago = "today" if days < 1 else "yesterday" if days == 1 else f"{days} days ago"
     return f"{d:%b %d, %H:%M} ({ago})"
 
 

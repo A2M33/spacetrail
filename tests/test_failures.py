@@ -3,6 +3,8 @@
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta
+from datetime import time as datetime_time
 from pathlib import Path
 
 import pytest
@@ -197,6 +199,17 @@ def test_uninstall_without_crontab_installed(monkeypatch):
 def test_cron_line_quotes_spaces_and_percent_signs():
     line = schedule._cron_line(["/home/me/My Files", "/data/100%"], "08:05")
     assert "'/home/me/My Files'" in line and "/data/100\\%" in line
+
+
+def test_when_goes_by_the_calendar():
+    def at(days_ago, hour, minute):
+        day = datetime.now().date() - timedelta(days=days_ago)
+        return datetime.combine(day, datetime_time(hour, minute)).timestamp()
+
+    assert "(today)" in cli._when(at(0, 0, 1))
+    assert "(yesterday)" in cli._when(at(1, 23, 59))  # under 24 hours ago on most of the day
+    assert "(yesterday)" in cli._when(at(1, 0, 1))
+    assert "(2 days ago)" in cli._when(at(2, 23, 59))
 
 
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
