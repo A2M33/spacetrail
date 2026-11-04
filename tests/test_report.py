@@ -93,6 +93,11 @@ def test_trim_to_shallower_depth():
     assert level(root, root) == 0 and level(os.path.join(root, "x"), root) == 1
 
 
+def test_biggest_lists_folders_that_are_all_under_one_percent():
+    sizes = {"/": 1000 * GB, "/a": 5 * GB, "/b": 7 * GB}  # the rest is loose files in the root
+    assert [c.path for c in biggest(sizes, "/", 5)] == ["/b", "/a"]
+
+
 def test_biggest_keeps_folder_made_of_many_small_ones():
     sizes = {"/": 100 * GB, "/a": 60 * GB, "/a/x": 59 * GB, "/nm": 30 * GB}
     sizes.update({f"/nm/p{i}": GB // 4 for i in range(120)})  # each under 1% of the drive

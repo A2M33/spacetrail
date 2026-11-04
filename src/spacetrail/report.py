@@ -83,10 +83,11 @@ def biggest(sizes: dict[str, int], root: str, limit: int) -> list[Change]:
 
     Only subfolders over 1% of the root count as an explanation, so node_modules with
     thousands of small packages stays on the list instead of vanishing into its children.
+    If every folder is under 1%, it lists them anyway.
     """
     grown = changes({}, sizes)
     grown.pop(root, None)
-    return culprits(grown, max(1, sizes.get(root, 0) // 100), limit)
+    return culprits(grown, max(1, sizes.get(root, 0) // 100), limit) or culprits(grown, 1, limit)
 
 
 def human(n: int, signed: bool = False) -> str:
