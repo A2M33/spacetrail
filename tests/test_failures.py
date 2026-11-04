@@ -9,6 +9,7 @@ import pytest
 
 from spacetrail import cli, schedule
 from spacetrail import scan as scan_module
+from spacetrail import store as store_module
 from spacetrail.cli import main
 from spacetrail.store import Store
 
@@ -118,6 +119,36 @@ def test_folder_name_that_is_not_valid_unicode(tmp_path, db, capsysbinary):
     assert main(["snap", str(data / "bad\udcffname")]) == 0  # as a root it's printed unescaped
     assert main(["top", str(data / "bad\udcffname")]) == 0
     assert b"Traceback" not in capsysbinary.readouterr().err
+
+
+def _no_home(monkeypatch):
+    def nowhere():
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(store_module.Path, "home", nowhere)
+
+
+def test_database_location_needs_no_home_folder_when_the_variable_is_set(tmp_path, monkeypatch):
+    _no_home(monkeypatch)
+    monkeypatch.delenv("SPACETRAIL_DB", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert store_module.default_db() == tmp_path / "spacetrail" / "snapshots.db"
+
+
+def test_no_home_folder_and_no_variables(monkeypatch, capsys):
+    _no_home(monkeypatch)
+    for name in ("SPACETRAIL_DB", "LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    assert main(["list"]) == 1
+    assert "SPACETRAIL_DB" in capsys.readouterr().err
+
+
+def test_empty_variables_count_as_not_set(tmp_path, monkeypatch):
+    monkeypatch.setattr(store_module.Path, "home", lambda: tmp_path)
+    for name in ("SPACETRAIL_DB", "LOCALAPPDATA", "XDG_DATA_HOME"):
+        monkeypatch.setenv(name, "")
+    assert store_module.default_db().is_absolute()  # not ./spacetrail in the current folder
 
 
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):

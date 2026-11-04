@@ -61,16 +61,28 @@ def is_within(path: str, folder: str) -> bool:
     return p == f or p.startswith(f if f.endswith(os.sep) else f + os.sep)
 
 
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name)  # set but empty counts as not set
+    return Path(value) if value else None
+
+
+def _home() -> Path:
+    try:
+        return Path.home()
+    except RuntimeError:
+        raise RuntimeError("can't find your home folder. Set SPACETRAIL_DB to the database file to use.") from None
+
+
 def data_dir() -> Path:
     if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        base = _env_path("LOCALAPPDATA") or _home()
     else:
-        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        base = _env_path("XDG_DATA_HOME") or _home() / ".local" / "share"
     return base / "spacetrail"
 
 
 def default_db() -> Path:
-    return Path(os.environ.get("SPACETRAIL_DB", data_dir() / "snapshots.db"))
+    return _env_path("SPACETRAIL_DB") or data_dir() / "snapshots.db"
 
 
 class Store:

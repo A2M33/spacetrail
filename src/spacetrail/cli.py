@@ -23,7 +23,7 @@ from .store import Store, default_db, is_within, path_key
 
 def default_root() -> str:
     if sys.platform == "win32":
-        return os.environ.get("SystemDrive", "C:") + "\\"
+        return (os.environ.get("SystemDrive") or "C:") + "\\"
     return os.path.expanduser("~")
 
 
