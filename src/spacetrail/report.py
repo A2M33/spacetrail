@@ -94,7 +94,7 @@ def human(n: int, signed: bool = False) -> str:
     sign = ("+" if n > 0 else "-" if n < 0 else "") if signed else ("-" if n < 0 else "")
     n = abs(n)
     for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024 or unit == "TB":
+        if round(n, 1) < 1024 or unit == "TB":  # 1023.99 KB would print as 1024.0 KB
             return f"{sign}{n:.0f} {unit}" if unit == "B" else f"{sign}{n:.1f} {unit}"
         n /= 1024
     raise AssertionError  # unreachable

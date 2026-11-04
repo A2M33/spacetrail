@@ -74,6 +74,12 @@ def test_formatting_and_parsing():
     assert parse_days("3") == 3
 
 
+def test_sizes_just_under_a_unit_round_up_to_it():
+    assert human(1024**2 - 1) == "1.0 MB"
+    assert human(-(1024**3 - 1)) == "-1.0 GB"
+    assert human(1023) == "1023 B"
+
+
 def test_bad_sizes_and_spans_raise_value_error():
     for bad in ("abc", "-5MB", "nan", ""):
         with pytest.raises(ValueError):
