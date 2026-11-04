@@ -81,7 +81,7 @@ def test_sizes_just_under_a_unit_round_up_to_it():
 
 
 def test_bad_sizes_and_spans_raise_value_error():
-    for bad in ("abc", "-5MB", "nan", ""):
+    for bad in ("abc", "-5MB", "nan", "", "1e308TB"):
         with pytest.raises(ValueError):
             parse_size(bad)
     for bad in ("1y", "-3d", "inf", ""):

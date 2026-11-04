@@ -118,7 +118,7 @@ def parse_size(text: str) -> int:
             number, mult = t[: -len(unit)], m
             break
     value = _number(number)
-    if value is None:
+    if value is None or not math.isfinite(value * mult):
         raise ValueError(f"not a size: {text!r} (try 500MB or 2GB)")
     return int(value * mult)
 
