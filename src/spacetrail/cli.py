@@ -274,7 +274,7 @@ def _emit_json(data) -> None:
     out = sys.stdout
     if hasattr(out, "buffer"):  # always UTF-8, whatever the console code page is
         out.flush()
-        out.buffer.write(text.encode("utf-8"))
+        out.buffer.write(text.encode("utf-8", "replace"))
         out.buffer.flush()
     else:
         out.write(text)
@@ -440,8 +440,7 @@ def _fix_streams() -> None:
         if stream is None:
             setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
             continue
-        enc = (getattr(stream, "encoding", None) or "").lower().replace("_", "-")
-        if enc in ("utf-8", "utf8") or not hasattr(stream, "reconfigure"):
+        if not hasattr(stream, "reconfigure"):
             continue
         try:
             tty = stream.isatty()
@@ -449,8 +448,9 @@ def _fix_streams() -> None:
             tty = True
         # Piped or redirected output gets UTF-8, so folder names like "Документы" survive
         # instead of turning into "?????????". PYTHONIOENCODING still wins if it's set.
+        # errors="replace" because a file name can hold characters even UTF-8 can't write.
         if not tty and not os.environ.get("PYTHONIOENCODING"):
-            stream.reconfigure(encoding="utf-8")
+            stream.reconfigure(encoding="utf-8", errors="replace")
         else:
             stream.reconfigure(errors="replace")
 

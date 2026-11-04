@@ -104,6 +104,22 @@ def test_json_first_run_reports_a_failed_snapshot(tmp_path, db, capsys):
     assert captured.out == "" and "Not a folder" in captured.err
 
 
+def test_folder_name_that_is_not_valid_unicode(tmp_path, db, capsysbinary):
+    data = tmp_path / "data"
+    try:
+        grow(data / "bad\udcffname" / "a.bin", 2)
+    except (OSError, UnicodeError):
+        pytest.skip("this file system refuses such a name")
+    assert main(["snap", "--quiet", str(data)]) == 0
+    assert main(["top", str(data)]) == 0
+    assert b"bad\\udcffname" in capsysbinary.readouterr().out
+    assert main(["top", str(data), "--json"]) == 0
+    assert b"bad\\\\udcffname" in capsysbinary.readouterr().out
+    assert main(["snap", str(data / "bad\udcffname")]) == 0  # as a root it's printed unescaped
+    assert main(["top", str(data / "bad\udcffname")]) == 0
+    assert b"Traceback" not in capsysbinary.readouterr().err
+
+
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
     def interrupted(*a, **kw):
         raise KeyboardInterrupt
