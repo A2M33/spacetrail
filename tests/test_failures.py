@@ -182,6 +182,12 @@ def test_schtasks_output_with_umlauts_is_decoded(monkeypatch):
     assert r.returncode == 1 and r.stderr.startswith("F") and r.stderr.endswith("r den Task")
 
 
+def test_uninstall_without_crontab_installed(monkeypatch):
+    monkeypatch.setattr(schedule.sys, "platform", "linux")
+    monkeypatch.setattr(schedule.shutil, "which", lambda name: None)
+    assert schedule.uninstall() == "There was no cron entry."
+
+
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
     def interrupted(*a, **kw):
         raise KeyboardInterrupt

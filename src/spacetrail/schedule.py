@@ -99,7 +99,7 @@ def install(paths: list[str], time: str = "12:30") -> str:
 def is_installed() -> bool:
     if sys.platform == "win32":
         return _capture(["schtasks", "/Query", "/TN", TASK]).returncode == 0
-    return any(CRON_TAG in line for line in _crontab()) if shutil.which("crontab") else False
+    return any(CRON_TAG in line for line in _crontab())
 
 
 def uninstall() -> str:
@@ -123,5 +123,7 @@ def _cron_line(paths: list[str], time: str) -> str:
 
 
 def _crontab() -> list[str]:
+    if not shutil.which("crontab"):
+        return []
     r = _capture(["crontab", "-l"])
     return r.stdout.splitlines() if r.returncode == 0 else []
