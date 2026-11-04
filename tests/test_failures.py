@@ -151,6 +151,12 @@ def test_empty_variables_count_as_not_set(tmp_path, monkeypatch):
     assert store_module.default_db().is_absolute()  # not ./spacetrail in the current folder
 
 
+def test_schedule_refuses_a_missing_folder(tmp_path, db, monkeypatch, capsys):
+    monkeypatch.setattr(schedule, "install", lambda *a: pytest.fail("must not install"))
+    assert main(["schedule", str(tmp_path / "nope")]) == 2
+    assert "Not a folder" in capsys.readouterr().err
+
+
 def _fake_schtasks(monkeypatch, answers):
     """Answer each schtasks verb with (exit code, stderr)."""
     monkeypatch.setattr(schedule.sys, "platform", "win32")

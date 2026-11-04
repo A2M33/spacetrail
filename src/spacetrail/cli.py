@@ -400,6 +400,10 @@ def cmd_list(args, store: Store) -> int:
 
 def cmd_schedule(args, store: Store) -> int:
     paths = [os.path.abspath(p) for p in args.paths] or [default_root()]
+    missing = [p for p in paths if not os.path.isdir(p)]
+    if missing:  # the daily task runs out of sight, so nobody would see it fail
+        print(f"Not a folder: {missing[0]}", file=sys.stderr)
+        return 2
     print(schedule.install(paths, args.time))
     return 0
 
