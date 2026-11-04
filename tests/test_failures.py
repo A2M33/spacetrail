@@ -98,6 +98,12 @@ def test_unreadable_folder_saves_no_snapshot(tmp_path, db, monkeypatch, capsys):
     store.close()
 
 
+def test_json_first_run_reports_a_failed_snapshot(tmp_path, db, capsys):
+    assert main(["report", "--json", str(tmp_path / "nope")]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and "Not a folder" in captured.err
+
+
 def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
     def interrupted(*a, **kw):
         raise KeyboardInterrupt

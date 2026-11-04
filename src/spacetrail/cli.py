@@ -187,6 +187,10 @@ def cmd_snap(args, store: Store) -> int:
     return code
 
 
+def _snap(args, store: Store, paths: list[str], quiet: bool) -> int:
+    return cmd_snap(argparse.Namespace(paths=paths, depth=args.depth, keep=args.keep, quiet=quiet), store)
+
+
 def _compare(store: Store, root: str, focus: str, args) -> dict:
     """Everything one report section needs, for both the text and the --json output."""
     out = {"root": root, "path": focus}
@@ -280,20 +284,19 @@ def cmd_report(args, store: Store) -> int:
     s = _style()
     as_json = getattr(args, "json", False)
     if getattr(args, "fresh", False):
-        code = cmd_snap(argparse.Namespace(paths=_fresh_paths(args, store), depth=args.depth,
-                                           keep=args.keep, quiet=as_json), store)
+        code = _snap(args, store, _fresh_paths(args, store), quiet=as_json)
         if code:
             return code
     if not store.roots():
         root = os.path.abspath(args.path) if args.path else default_root()
-        if as_json:
-            cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=True), store)
-            _emit_json({"reports": [{"root": root, "path": root, "status": "first_snapshot"}]})
-            return 0
-        print(f"No snapshots yet. Taking the first one of {root} now...\n")
-        code = cmd_snap(argparse.Namespace(paths=[root], depth=args.depth, keep=args.keep, quiet=False), store)
+        if not as_json:
+            print(f"No snapshots yet. Taking the first one of {root} now...\n")
+        code = _snap(args, store, [root], quiet=as_json)
         if code:
             return code
+        if as_json:
+            _emit_json({"reports": [{"root": root, "path": root, "status": "first_snapshot"}]})
+            return 0
         snap = store.snapshots(root)[-1]
         print("\n" + s.yellow("  Biggest folders right now"))
         _print_biggest(biggest(store.sizes(snap.id), snap.root, 10), snap.root, s)
@@ -342,7 +345,7 @@ def cmd_top(args, store: Store) -> int:
         paths = _fresh_paths(args, store)
         if not store.roots() and not as_json:
             print(f"No snapshots yet. Taking the first one of {os.path.abspath(args.path or default_root())} now...\n")
-        code = cmd_snap(argparse.Namespace(paths=paths, depth=args.depth, keep=args.keep, quiet=as_json), store)
+        code = _snap(args, store, paths, quiet=as_json)
         if code:
             return code
         if not as_json:
