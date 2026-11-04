@@ -9,6 +9,7 @@ import pytest
 
 from spacetrail import cli, hints, schedule
 from spacetrail.cli import main
+from spacetrail.output import make_style
 from spacetrail.report import Change
 from spacetrail.store import Store
 
@@ -253,9 +254,9 @@ def test_rows_say_new_and_deleted_and_line_up(capsys, tmp_path):
 def test_no_color_wins(monkeypatch):
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("FORCE_COLOR", "1")
-    assert cli._style().on
+    assert make_style().on
     monkeypatch.setenv("NO_COLOR", "1")
-    assert not cli._style().on
+    assert not make_style().on
 
 
 @pytest.fixture(autouse=True)

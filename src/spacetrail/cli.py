@@ -17,6 +17,7 @@ from .report import (
     Change, biggest, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim,
 )
 from .hints import hint
+from .output import Style, bar, make_style
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -28,42 +29,6 @@ def default_root() -> str:
 
 
 # ---------- output helpers ----------
-
-class Style:
-    def __init__(self, enabled: bool) -> None:
-        self.on = enabled
-
-    def _wrap(self, code: str, text: str) -> str:
-        return f"\033[{code}m{text}\033[0m" if self.on else text
-
-    def bold(self, t): return self._wrap("1", t)
-    def dim(self, t): return self._wrap("2", t)
-    def red(self, t): return self._wrap("31", t)
-    def green(self, t): return self._wrap("32", t)
-    def yellow(self, t): return self._wrap("33", t)
-
-
-def _style() -> Style:
-    if os.environ.get("NO_COLOR"):  # https://no-color.org
-        return Style(False)
-    if os.environ.get("FORCE_COLOR"):
-        return Style(True)
-    if not sys.stdout.isatty():
-        return Style(False)
-    if sys.platform == "win32":
-        # Old Windows consoles need ANSI colours switched on explicitly.
-        try:
-            import ctypes
-
-            k = ctypes.windll.kernel32
-            h = k.GetStdHandle(-11)
-            mode = ctypes.c_uint32()
-            if k.GetConsoleMode(h, ctypes.byref(mode)):
-                k.SetConsoleMode(h, mode.value | 0x0004)
-        except Exception:
-            return Style(False)
-    return Style(True)
-
 
 def _when(ts: float) -> str:
     d = datetime.fromtimestamp(ts)
@@ -87,23 +52,9 @@ def _rebase(sizes: dict[str, int], old_root: str, new_root: str) -> dict[str, in
     return {new_root + p[len(old_root):]: n for p, n in sizes.items()}
 
 
-def _bar_char() -> str:
-    # Some consoles and redirected output can't encode the block character.
-    try:
-        "█".encode(sys.stdout.encoding or "ascii")
-        return "█"
-    except (UnicodeEncodeError, LookupError):
-        return "#"
-
-
-def _bar(value: int, biggest: int, width: int = 10) -> str:
-    n = max(1, round(width * value / biggest)) if biggest else 0
-    return _bar_char() * n + " " * (width - n)
-
-
 def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
     # Fixed-width columns first and the path last, so every path starts in the same column.
-    biggest = max(abs(c.delta) for c in rows)
+    top = max(abs(c.delta) for c in rows)
     color = s.red if growing else s.green
     for c in rows:
         size = human(c.delta, signed=True).rjust(10)
@@ -111,7 +62,7 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
         before = human(c.before) if c.before else "new"
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
-        print(f"  {color(size)}  {color(_bar(abs(c.delta), biggest))}  {s.dim(sizes)}  {_short(c.path, root)}")
+        print(f"  {color(size)}  {color(bar(abs(c.delta), top))}  {s.dim(sizes)}  {_short(c.path, root)}")
         if growing:
             _print_hint(c.path, 2 + 10 + 2 + 10 + 2 + len(sizes) + 2, s)
 
@@ -128,7 +79,7 @@ def _print_biggest(rows: list[Change], root: str, s: Style) -> None:
         return
     top = rows[0].after
     for c in rows:
-        print(f"  {s.bold(human(c.after).rjust(10))}  {s.dim(_bar(c.after, top))}  {_short(c.path, root)}")
+        print(f"  {s.bold(human(c.after).rjust(10))}  {s.dim(bar(c.after, top))}  {_short(c.path, root)}")
         _print_hint(c.path, 2 + 10 + 2 + 10 + 2, s)
 
 
@@ -153,7 +104,7 @@ def _offer_schedule(root: str) -> bool:
 # ---------- commands ----------
 
 def cmd_snap(args, store: Store) -> int:
-    s = _style()
+    s = make_style()
     code = 0
     for root in args.paths or [default_root()]:
         root = os.path.abspath(root)
@@ -281,7 +232,7 @@ def _emit_json(data) -> None:
 
 
 def cmd_report(args, store: Store) -> int:
-    s = _style()
+    s = make_style()
     as_json = getattr(args, "json", False)
     if getattr(args, "fresh", False):
         code = _snap(args, store, _fresh_paths(args, store), quiet=as_json)
@@ -339,7 +290,7 @@ def _targets(args, store: Store) -> list[tuple[str, str]] | None:
 
 
 def cmd_top(args, store: Store) -> int:
-    s = _style()
+    s = make_style()
     as_json = getattr(args, "json", False)
     if args.fresh or not store.roots():
         paths = _fresh_paths(args, store)
