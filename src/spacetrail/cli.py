@@ -532,15 +532,18 @@ def _is_windows_exe() -> bool:
     return sys.platform == "win32" and getattr(sys, "frozen", False)
 
 
-def _console_is_ours() -> bool:
-    # Double-clicking spacetrail.exe (or the daily task) opens a console just for us.
-    # If we're the only process attached to it, nobody started us from a terminal.
-    if not _is_windows_exe():
-        return False
+def _console_process_count() -> int:
     import ctypes
 
-    procs = (ctypes.c_uint32 * 2)()
-    return ctypes.windll.kernel32.GetConsoleProcessList(procs, 2) == 1
+    procs = (ctypes.c_uint32 * 4)()  # the call returns the full count even if they don't all fit
+    return ctypes.windll.kernel32.GetConsoleProcessList(procs, 4)
+
+
+def _console_is_ours() -> bool:
+    # Double-clicking spacetrail.exe (or the daily task) opens a console just for us.
+    # A --onefile exe is two processes, the unpacking stub and Python, so two means nobody
+    # started us from a terminal; a shell would be the third.
+    return _is_windows_exe() and _console_process_count() <= 2 and sys.stdin.isatty()
 
 
 def _hide_console() -> None:
@@ -554,4 +557,7 @@ def _hide_console() -> None:
 def _pause_if_double_clicked() -> None:
     # That console closes as soon as we return, taking the output with it.
     if _console_is_ours():
-        input("\nPress Enter to close.")
+        try:
+            input("\nPress Enter to close.")
+        except (EOFError, KeyboardInterrupt):
+            pass

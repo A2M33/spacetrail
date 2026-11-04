@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -167,6 +168,27 @@ def test_double_clicked_exe_shows_error_before_pausing(tmp_path, monkeypatch, ca
     monkeypatch.setattr(cli, "_pause_if_double_clicked", lambda: seen.append(capsys.readouterr().err))
     assert main(["list"]) == 1
     assert len(seen) == 1 and "ValueError: boom" in seen[0]
+
+
+@pytest.mark.parametrize("processes, ours", [
+    (2, True),    # double-clicked: the onefile stub and Python
+    (3, False),   # typed in a terminal: the shell as well
+])
+def test_console_is_ours_counts_the_onefile_stub(processes, ours, monkeypatch):
+    monkeypatch.setattr(cli, "_is_windows_exe", lambda: True)
+    monkeypatch.setattr(cli, "_console_process_count", lambda: processes)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    assert cli._console_is_ours() is ours
+
+
+@pytest.mark.parametrize("error", [EOFError, KeyboardInterrupt])
+def test_pause_survives_closed_stdin_and_ctrl_c(error, monkeypatch):
+    def interrupted(prompt=""):
+        raise error
+
+    monkeypatch.setattr(cli, "_console_is_ours", lambda: True)
+    monkeypatch.setattr("builtins.input", interrupted)
+    cli._pause_if_double_clicked()
 
 
 def _two_snaps_with_growth(tmp_path, monkeypatch, name):
