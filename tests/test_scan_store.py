@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +73,46 @@ def test_listing_that_breaks_off_keeps_the_rest_of_the_scan(tmp_path, monkeypatc
     r = scan(tmp_path)
     assert r.skipped == 1
     assert r.sizes[str(tmp_path / "fine")] == 7 and r.sizes[str(tmp_path)] == 12
+
+
+class FakeEntry2:
+    """An os.DirEntry for a folder tree that exists only in the test."""
+
+    def __init__(self, path, size=None):
+        self.path, self.size = path, size
+
+    def is_symlink(self):
+        return False
+
+    def is_dir(self, follow_symlinks=True):
+        return self.size is None
+
+    def is_file(self, follow_symlinks=True):
+        return self.size is not None
+
+    def stat(self, follow_symlinks=True):
+        return SimpleNamespace(st_size=self.size, st_file_attributes=0x10, st_dev=1)
+
+
+class FakeListing(list):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="network share paths are a Windows thing")
+def test_network_share_root_adds_up_its_folders(monkeypatch):
+    root = r"\\server\share"
+    tree = {root: [FakeEntry2(root + r"\a"), FakeEntry2(root + r"\top.bin", 3)],
+            root + r"\a": [FakeEntry2(root + r"\a\b.bin", 4)]}
+    with monkeypatch.context() as m:
+        m.setattr(scan_module.os, "scandir", lambda path: FakeListing(tree[path]))
+        m.setattr(scan_module.os, "stat", lambda path: SimpleNamespace(st_dev=1))
+        r = scan(root)
+    assert r.sizes[root + r"\a"] == 4
+    assert r.sizes[root] == 7
 
 
 def test_store_roundtrip_and_prune(tmp_path):

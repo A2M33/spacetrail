@@ -56,6 +56,8 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
     result = ScanResult(root=root, depth=depth)
     root_dev = os.stat(root).st_dev
     totals: dict[str, int] = {root: 0}
+    # Noted during the walk: dirname() of \\server\share\a is \\server\share\, not the root.
+    parents: dict[str, str] = {}
     # Iterative walk: deep trees would hit Python's recursion limit.
     stack: list[tuple[str, int, str]] = [(root, 0, root)]  # (path, level, folder it counts toward)
     while stack:
@@ -79,6 +81,7 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
                             child_owner = entry.path if level + 1 <= depth else owner
                             if child_owner == entry.path:
                                 totals[entry.path] = 0
+                                parents[entry.path] = owner
                             stack.append((entry.path, level + 1, child_owner))
                         elif entry.is_file(follow_symlinks=False):
                             totals[owner] += entry.stat(follow_symlinks=False).st_size
@@ -90,12 +93,8 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
         except OSError:  # the listing itself broke off, like a network drive dropping out
             result.skipped += 1
 
-    # Roll each folder's own bytes up into all of its ancestors.
-    for path in sorted(totals, key=len, reverse=True):
-        if path == root:
-            continue
-        parent = os.path.dirname(path)
-        if parent in totals:
-            totals[parent] += totals[path]
+    # Roll each folder's own bytes up into all of its ancestors, deepest first.
+    for path in sorted(parents, key=len, reverse=True):
+        totals[parents[path]] += totals[path]
     result.sizes = totals
     return result
