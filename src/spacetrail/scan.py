@@ -19,6 +19,8 @@ _LINK_TAGS = {
 # Linux pseudo-filesystems that look like folders but aren't real disk usage.
 _SKIP_UNIX = {"/proc", "/sys", "/dev", "/run"}
 
+_LONG_PATH = 240  # with room for the \* that listing a folder adds to its path
+
 
 @dataclass
 class ScanResult:
@@ -46,6 +48,16 @@ def _is_link(entry: os.DirEntry) -> bool:
     return False
 
 
+def _open_folder(path: str):
+    """os.scandir that also reaches past the 260-character path limit on Windows.
+
+    The limit is on by default, and deep node_modules folders do go past it.
+    """
+    if sys.platform == "win32" and len(path) >= _LONG_PATH and not path.startswith("\\\\?\\"):
+        path = "\\\\?\\UNC\\" + path[2:] if path.startswith("\\\\") else "\\\\?\\" + path
+    return os.scandir(path)
+
+
 def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
     """Total size of every folder up to `depth` levels below root.
 
@@ -63,7 +75,7 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
     while stack:
         path, level, owner = stack.pop()
         try:
-            it = os.scandir(path)
+            it = _open_folder(path)
         except OSError:
             if path == root:  # an empty result would look like everything was deleted
                 raise
@@ -74,15 +86,16 @@ def scan(root: str | Path, depth: int = 6, progress=None) -> ScanResult:
                 for entry in it:
                     try:
                         if entry.is_dir(follow_symlinks=False):
-                            if _is_link(entry) or entry.path in _SKIP_UNIX:
+                            child = os.path.join(path, entry.name)  # entry.path may have the \\?\ prefix
+                            if _is_link(entry) or child in _SKIP_UNIX:
                                 continue
                             if sys.platform != "win32" and entry.stat(follow_symlinks=False).st_dev != root_dev:
                                 continue  # another disk mounted inside this one
-                            child_owner = entry.path if level + 1 <= depth else owner
-                            if child_owner == entry.path:
-                                totals[entry.path] = 0
-                                parents[entry.path] = owner
-                            stack.append((entry.path, level + 1, child_owner))
+                            child_owner = child if level + 1 <= depth else owner
+                            if child_owner == child:
+                                totals[child] = 0
+                                parents[child] = owner
+                            stack.append((child, level + 1, child_owner))
                         elif entry.is_file(follow_symlinks=False):
                             totals[owner] += entry.stat(follow_symlinks=False).st_size
                             result.files += 1

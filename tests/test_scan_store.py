@@ -79,7 +79,7 @@ class FakeEntry2:
     """An os.DirEntry for a folder tree that exists only in the test."""
 
     def __init__(self, path, size=None):
-        self.path, self.size = path, size
+        self.path, self.size, self.name = path, size, path.rsplit("\\", 1)[-1]
 
     def is_symlink(self):
         return False
@@ -113,6 +113,28 @@ def test_network_share_root_adds_up_its_folders(monkeypatch):
         r = scan(root)
     assert r.sizes[root + r"\a"] == 4
     assert r.sizes[root] == 7
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the 260-character limit is a Windows thing")
+def test_folder_past_the_path_limit_is_read(tmp_path, monkeypatch):
+    prefix = "\\\\?\\"
+    deep = str(tmp_path)
+    while len(deep) < 300:
+        deep = os.path.join(deep, "d" * 30)
+    os.makedirs(prefix + deep)
+    with open(prefix + os.path.join(deep, "f.bin"), "wb") as f:
+        f.write(b"x" * 9)
+    real = os.scandir
+
+    def default_windows(path):  # refuses long paths, unlike a PC with LongPathsEnabled
+        if len(path) >= 260 and not path.startswith(prefix):
+            raise FileNotFoundError(3, "The system cannot find the path specified")
+        return real(path)
+
+    monkeypatch.setattr(scan_module.os, "scandir", default_windows)
+    r = scan(tmp_path)
+    assert (r.skipped, r.files, r.sizes[str(tmp_path)]) == (0, 1, 9)
+    assert not any(p.startswith(prefix) for p in r.sizes)
 
 
 def test_store_roundtrip_and_prune(tmp_path):
