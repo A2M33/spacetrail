@@ -67,3 +67,12 @@ def test_unschedule_works_with_a_damaged_database(db, monkeypatch, capsys):
     monkeypatch.setattr(schedule, "uninstall", lambda: "Removed.")
     assert main(["unschedule"]) == 0
     assert "Removed." in capsys.readouterr().out
+
+
+def test_ctrl_c_exits_with_130(tmp_path, db, monkeypatch, capsys):
+    def interrupted(*a, **kw):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "scan", interrupted)
+    assert main(["snap", str(tmp_path)]) == 130
+    assert capsys.readouterr().err.strip() == "Stopped."

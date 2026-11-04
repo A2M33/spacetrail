@@ -533,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.flush()
         return code
     except KeyboardInterrupt:
+        print("Stopped.", file=sys.stderr)
         return 130
     except sqlite3.Error as e:
         print(f"spacetrail: error: {_database_problem(e)}", file=sys.stderr)
