@@ -17,7 +17,7 @@ from .report import (
     Change, biggest, changes, culprits, deepest, human, parse_days, parse_size, pick_baseline, trim,
 )
 from .hints import hint
-from .output import Style, bar, cells, fit_path, make_style
+from .output import Style, bar, cells, fit_path, make_style, terminal_width, wrap
 from .scan import scan
 from .store import Store, default_db, is_within, path_key
 
@@ -29,6 +29,9 @@ def default_root() -> str:
 
 
 # ---------- output helpers ----------
+
+MIN_PATH_COLUMNS = 24  # a table row drops other columns before the path gets narrower than this
+HINT_INDENT = 14  # tips start under the bar, where they have room in an 80-column terminal
 
 def _when(ts: float) -> str:
     d = datetime.fromtimestamp(ts)
@@ -52,8 +55,43 @@ def _rebase(sizes: dict[str, int], old_root: str, new_root: str) -> dict[str, in
     return {new_root + p[len(old_root):]: n for p, n in sizes.items()}
 
 
+def _plural(n: int, word: str) -> str:
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
+
+
+def _say(text: str, indent: str = "") -> None:
+    print("\n".join(wrap(text, terminal_width(), indent)))
+
+
+def _print_heading(path: str, detail: str, s: Style) -> None:
+    """The folder in bold with `detail` beside it, or under it if the line would wrap."""
+    width = terminal_width()
+    if width is None or cells(path) + 3 + cells(detail) < width:
+        print(s.bold(path) + s.dim("   " + detail))
+        return
+    print(s.bold(fit_path(path, width - 1)))
+    for line in wrap(detail, width, "  "):
+        print(s.dim(line))
+
+
+def _row(columns: list[tuple[int, str]], path: str, width: int | None) -> str:
+    """Fixed-width columns, given as (width, text), and the path last, so paths line up.
+
+    In a narrow terminal the columns on the right go first to leave the path some room.
+    """
+    def used() -> int:
+        return 2 + sum(w + 2 for w, _ in columns)
+
+    if width is not None:
+        columns = list(columns)
+        while len(columns) > 1 and width - used() < MIN_PATH_COLUMNS:
+            columns.pop()
+        path = fit_path(path, max(1, width - 1 - used()))
+    return "  " + "  ".join([text for _, text in columns] + [path])
+
+
 def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
-    # Fixed-width columns first and the path last, so every path starts in the same column.
+    width = terminal_width()
     top = max(abs(c.delta) for c in rows)
     color = s.red if growing else s.green
     for c in rows:
@@ -62,25 +100,36 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
         before = human(c.before) if c.before else "new"
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
-        print(f"  {color(size)}  {color(bar(abs(c.delta), top))}  {s.dim(sizes)}  {_short(c.path, root)}")
+        columns = [(10, color(size)), (10, color(bar(abs(c.delta), top))), (len(sizes), s.dim(sizes))]
+        print(_row(columns, _short(c.path, root), width))
         if growing:
-            _print_hint(c.path, 2 + 10 + 2 + 10 + 2 + len(sizes) + 2, s)
+            _print_hint(c.path, s, width)
 
 
-def _print_hint(path: str, indent: int, s: Style) -> None:
+def _print_hint(path: str, s: Style, width: int | None) -> None:
     note = hint(path)
     if note:
-        print(" " * indent + s.dim(note))
+        for line in wrap(note, width, " " * HINT_INDENT):
+            print(s.dim(line))
 
 
 def _print_biggest(rows: list[Change], root: str, s: Style) -> None:
     if not rows:
         print("  No folders over 1 MB.")
         return
+    width = terminal_width()
     top = rows[0].after
     for c in rows:
-        print(f"  {s.bold(human(c.after).rjust(10))}  {s.dim(bar(c.after, top))}  {_short(c.path, root)}")
-        _print_hint(c.path, 2 + 10 + 2 + 10 + 2, s)
+        columns = [(10, s.bold(human(c.after).rjust(10))), (10, s.dim(bar(c.after, top)))]
+        print(_row(columns, _short(c.path, root), width))
+        _print_hint(c.path, s, width)
+
+
+def _print_not_stored(path: str, root: str, s: Style) -> None:
+    print(s.bold(path))
+    _say(f"Not in the snapshots of {root}. spacetrail only remembers folders over 1 MB, "
+         "a few levels deep (see --depth).", "  ")
+    print()
 
 
 def _offer_schedule(root: str) -> bool:
@@ -152,9 +201,11 @@ def cmd_snap(args, store: Store) -> int:
         store.save(result, disk=(usage.free, usage.total))
         store.prune(args.keep)
         if not args.quiet:
-            took = time.monotonic() - started
-            print(f"{s.green('Saved')} {root}: {human(result.sizes[root])} in {result.files:,} files "
-                  f"({took:.0f}s, {result.skipped} folders not readable)")
+            notes = [f"{time.monotonic() - started:.0f}s"]
+            if result.skipped:
+                notes.append(_plural(result.skipped, "folder") + " not readable")
+            print(f"{s.green('Saved')} {root}: {human(result.sizes[root])} in {_plural(result.files, 'file')} "
+                  f"({', '.join(notes)})")
     return code
 
 
@@ -196,19 +247,22 @@ def _compare(store: Store, root: str, focus: str, args) -> dict:
 
 def _print_report(r: dict, args, s: Style) -> None:
     if r["status"] == "one_snapshot":
-        print(f"{s.bold(r['root'])}: only one snapshot so far. Run `spacetrail snap` again later "
-              "or `spacetrail schedule`.")
+        print(s.bold(r["root"]))
+        _say("There's only one snapshot so far. Run `spacetrail snap` again later or `spacetrail schedule`.", "  ")
+        print()
         return
     if r["status"] == "not_stored":
-        print(f"{s.bold(r['path'])}: not in the snapshots of {r['root']}. spacetrail only remembers "
-              "folders over 1 MB, a few levels deep (see --depth).")
+        _print_not_stored(r["path"], r["root"], s)
         return
     old, new = r["old"], r["new"]
-    print(s.bold(r["path"]) + s.dim(f"   {_when(old.taken)}  ->  {_when(new.taken)}"))
-    line = f"  folder size {human(r['size'])} ({human(r['change'], signed=True)})"
+    _print_heading(r["path"], f"{_when(old.taken)}  ->  {_when(new.taken)}", s)
+    summary = [f"folder size {human(r['size'])} ({human(r['change'], signed=True)})"]
     if old.disk_free is not None and new.disk_free is not None:
-        line += f"   free space {human(old.disk_free)} -> {human(new.disk_free)}"
-    print(line + "\n")
+        summary.append(f"free space {human(old.disk_free)} -> {human(new.disk_free)}")
+    width = terminal_width()
+    one_line = "  " + "   ".join(summary)
+    print(one_line if width is None or len(one_line) < width else "\n".join("  " + part for part in summary))
+    print()
     grew, shrank = r["grew"], r["shrank"]
     if grew:
         print(s.yellow("  Grew"))
@@ -271,7 +325,8 @@ def cmd_report(args, store: Store) -> int:
         snap = store.snapshots(root)[-1]
         print("\n" + s.yellow("  Biggest folders right now"))
         _print_biggest(biggest(store.sizes(snap.id), snap.root, 10), snap.root, s)
-        print("\nThat's the starting point. To see what grows, spacetrail needs a second snapshot later.")
+        print()
+        _say("That's the starting point. To see what grows, spacetrail needs a second snapshot later.")
         if not _offer_schedule(root):
             print("Let spacetrail take one every day:  spacetrail schedule")
         return 0
@@ -348,10 +403,9 @@ def cmd_top(args, store: Store) -> int:
         return 0
     for t in tops:
         if t["status"] != "ok":
-            print(f"{s.bold(t['path'])}: not in the snapshots of {t['root']}. spacetrail only remembers "
-                  "folders over 1 MB, a few levels deep (see --depth).\n")
+            _print_not_stored(t["path"], t["root"], s)
             continue
-        print(s.bold(t["path"]) + s.dim(f"   {human(t['size'])}, snapshot from {_when(t['snap'].taken)}"))
+        _print_heading(t["path"], f"{human(t['size'])}, snapshot from {_when(t['snap'].taken)}", s)
         _print_biggest(t["rows"], t["path"], s)
         print()
     return 0
@@ -362,9 +416,12 @@ def cmd_list(args, store: Store) -> int:
     if not snaps:
         print("No snapshots yet. Run: spacetrail snap")
         return 0
+    s, width = make_style(), terminal_width()
     for snap in snaps:
-        size = store.sizes(snap.id).get(snap.root, 0)
-        print(f"{_when(snap.taken):32} {snap.root:20} {human(size):>10}  {snap.files:>10,} files")
+        columns = [(28, s.dim(f"{_when(snap.taken):28}")),
+                   (10, f"{human(store.folder_size(snap.id, snap.root)):>10}"),
+                   (15, f"{_plural(snap.files, 'file'):>15}")]
+        print(_row(columns, snap.root, width))
     print(f"\nDatabase: {default_db()}")
     return 0
 

@@ -150,6 +150,10 @@ class Store:
     def sizes(self, snapshot_id: int) -> dict[str, int]:
         return dict(self.db.execute("SELECT path, size FROM folder WHERE snapshot = ?", (snapshot_id,)))
 
+    def folder_size(self, snapshot_id: int, path: str) -> int:
+        row = self.db.execute("SELECT size FROM folder WHERE snapshot = ? AND path = ?", (snapshot_id, path)).fetchone()
+        return row[0] if row else 0
+
     def prune(self, keep_days: float, now: float | None = None) -> int:
         """Delete old snapshots, but always keep the newest one per folder."""
         now = time.time() if now is None else now
