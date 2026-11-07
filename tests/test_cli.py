@@ -214,6 +214,21 @@ def test_piped_report_keeps_non_ascii_names(tmp_path, monkeypatch):
     assert "Документы" in r.stdout.decode("utf-8")
 
 
+def test_piped_output_is_utf8_when_python_ignores_pythonioencoding(tmp_path, monkeypatch):
+    # spacetrail.exe runs like `python -E`: PYTHONIOENCODING is set but nobody applies it.
+    data = _two_snaps_with_growth(tmp_path, monkeypatch, "Документы")
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONUTF8"}
+    env["PYTHONIOENCODING"] = "utf-8"
+    code = (f"import sys; sys.path.insert(0, {str(Path(__file__).parents[1] / 'src')!r}); "
+            "from spacetrail.cli import main; sys.exit(main())")
+    r = subprocess.run(
+        [sys.executable, "-E", "-c", code, "top", str(data)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=60,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "Документы" in r.stdout.decode("utf-8")
+
+
 def test_report_json(tmp_path, monkeypatch, capsysbinary):
     data = _two_snaps_with_growth(tmp_path, monkeypatch, "Документы")
     capsysbinary.readouterr()

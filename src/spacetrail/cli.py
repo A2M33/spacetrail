@@ -481,10 +481,16 @@ def _fix_streams() -> None:
         # Piped or redirected output gets UTF-8, so folder names like "Документы" survive
         # instead of turning into "?????????". PYTHONIOENCODING still wins if it's set.
         # errors="replace" because a file name can hold characters even UTF-8 can't write.
-        if not tty and not os.environ.get("PYTHONIOENCODING"):
+        if not tty and not _io_encoding_from_env():
             stream.reconfigure(encoding="utf-8", errors="replace")
         else:
             stream.reconfigure(errors="replace")
+
+
+def _io_encoding_from_env() -> bool:
+    # spacetrail.exe ignores the PYTHON* variables, like `python -E`. Leaving the streams
+    # alone there would give a pipe the ANSI code page, not the encoding that was asked for.
+    return bool(os.environ.get("PYTHONIOENCODING")) and not sys.flags.ignore_environment
 
 
 def _reader_left() -> bool:
