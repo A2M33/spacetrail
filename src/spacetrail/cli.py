@@ -93,14 +93,16 @@ def _row(columns: list[tuple[int, str]], path: str, width: int | None) -> str:
 def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
     width = terminal_width()
     top = max(abs(c.delta) for c in rows)
-    color = s.red if growing else s.green
     for c in rows:
         size = human(c.delta, signed=True).rjust(10)
         # Folders under 1 MB aren't stored: a 0 means it appeared or went away.
         before = human(c.before) if c.before else "new"
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
-        columns = [(10, color(size)), (10, color(bar(abs(c.delta), top))), (len(sizes), s.dim(sizes))]
+        bars = bar(abs(c.delta), top)
+        # Growth is the one thing in amber; what shrank is plain text with a dim bar.
+        size, bars = (s.amber(size), s.amber(bars)) if growing else (size, s.dim(bars))
+        columns = [(10, size), (10, bars), (len(sizes), s.dim(sizes))]
         print(_row(columns, _short(c.path, root), width))
         if growing:
             _print_hint(c.path, s, width)
@@ -208,7 +210,7 @@ def cmd_snap(args, store: Store) -> int:
             notes = [f"{time.monotonic() - started:.0f}s"]
             if result.skipped:
                 notes.append(_plural(result.skipped, "folder") + " not readable")
-            print(f"{s.green('Saved')} {root}: {human(result.sizes[root])} in {_plural(result.files, 'file')} "
+            print(f"{s.bold('Saved')} {root}: {human(result.sizes[root])} in {_plural(result.files, 'file')} "
                   f"({', '.join(notes)})")
     return code
 
@@ -269,10 +271,10 @@ def _print_report(r: dict, args, s: Style) -> None:
     print()
     grew, shrank = r["grew"], r["shrank"]
     if grew:
-        print(s.yellow("  Grew"))
+        print(s.bold("  Grew"))
         _print_rows(grew, r["path"], s, growing=True)
     if shrank:
-        print(("\n" if grew else "") + s.yellow("  Shrank"))
+        print(("\n" if grew else "") + s.bold("  Shrank"))
         _print_rows(shrank, r["path"], s, growing=False)
     if not grew and not shrank:
         print(f"  Nothing changed by more than {human(args.min)}.")
@@ -327,7 +329,7 @@ def cmd_report(args, store: Store) -> int:
             _emit_json({"reports": [{"root": root, "path": root, "status": "first_snapshot"}]})
             return 0
         snap = store.snapshots(root)[-1]
-        print("\n" + s.yellow("  Biggest folders right now"))
+        print("\n" + s.bold("  Biggest folders right now"))
         _print_biggest(biggest(store.sizes(snap.id), snap.root, 10), snap.root, s)
         print()
         _say("That's the starting point. To see what grows, spacetrail needs a second snapshot later.")

@@ -62,6 +62,16 @@ def test_piped_rows_keep_the_whole_path(monkeypatch, capsys):
     assert os.path.relpath(rows()[0].path, ROOT) in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("growing", [True, False])
+def test_only_growth_is_amber(growing, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "terminal_width", lambda: None)
+    cli._print_rows(rows(), ROOT, cli.Style(True), growing=growing)
+    out = capsys.readouterr().out
+    assert ("\033[38;5;214m +300.0 MB" in out) is growing
+    assert "\033[2m" in out  # the sizes column is a dim label either way
+    assert not any(f"\033[{code}m" in out for code in ("31", "32", "33"))  # no red, green or yellow
+
+
 def test_tip_sits_under_the_row(monkeypatch, capsys):
     monkeypatch.setattr(cli, "hint", lambda path: "A tip.")
     cli._print_rows(rows()[:1], ROOT, cli.Style(False), growing=True)

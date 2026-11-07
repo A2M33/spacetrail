@@ -10,6 +10,8 @@ import unicodedata
 
 
 class Style:
+    """The A2M33 palette in a terminal: amber marks what grew, dim is for labels, nothing else has colour."""
+
     def __init__(self, enabled: bool) -> None:
         self.on = enabled
 
@@ -18,9 +20,7 @@ class Style:
 
     def bold(self, t): return self._wrap("1", t)
     def dim(self, t): return self._wrap("2", t)
-    def red(self, t): return self._wrap("31", t)
-    def green(self, t): return self._wrap("32", t)
-    def yellow(self, t): return self._wrap("33", t)
+    def amber(self, t): return self._wrap("38;5;214", t)  # 256-colour amber, close to #f0ab2a
 
 
 def _windows_ansi_is_on() -> bool:
