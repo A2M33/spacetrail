@@ -197,8 +197,12 @@ def cmd_snap(args, store: Store) -> int:
             print(f"Can't read {root}: {e.strerror or e}", file=sys.stderr)
             code = 2
             continue
-        usage = shutil.disk_usage(root)
-        store.save(result, disk=(usage.free, usage.total))
+        try:
+            usage = shutil.disk_usage(root)
+            disk = (usage.free, usage.total)
+        except OSError:  # a network drive that dropped out after the scan; keep the sizes anyway
+            disk = None
+        store.save(result, disk=disk)
         store.prune(args.keep)
         if not args.quiet:
             notes = [f"{time.monotonic() - started:.0f}s"]

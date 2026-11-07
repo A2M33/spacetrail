@@ -102,6 +102,22 @@ def test_unreadable_folder_saves_no_snapshot(tmp_path, db, monkeypatch, capsys):
     store.close()
 
 
+def test_free_space_that_cant_be_read_still_saves_the_snapshot(tmp_path, db, monkeypatch, capsys):
+    data = tmp_path / "data"
+    grow(data / "sub" / "a.bin", 2)
+
+    def gone(path):
+        raise OSError(64, "The specified network name is no longer available")
+
+    monkeypatch.setattr(cli.shutil, "disk_usage", gone)
+    assert main(["snap", str(data)]) == 0
+    assert "Saved" in capsys.readouterr().out
+    store = Store(db)
+    [snap] = store.snapshots()
+    store.close()
+    assert snap.disk_free is None and snap.files == 1
+
+
 def test_json_first_run_reports_a_failed_snapshot(tmp_path, db, capsys):
     assert main(["report", "--json", str(tmp_path / "nope")]) == 2
     captured = capsys.readouterr()
