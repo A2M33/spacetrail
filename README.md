@@ -11,7 +11,7 @@ Your drive was fine last week and now it's full. spacetrail tells you which fold
 
 Once a day it records how big each folder is. Ask it later and it compares today with a week ago, then lists the folders that grew, down to the one responsible: your `Downloads`, Chrome's cache, a game update or Windows Update leftovers.
 
-![spacetrail showing which folders grew in the last 7 days](docs/demo.png)
+![spacetrail report for drive X: six folders grew in the last 7 days, led by a new 2.3 GB game and 1.7 GB of downloads, with cleanup tips under the browser cache, Windows Update and Temp folders, and one folder of captures deleted](docs/demo.png)
 
 *Example output on a test drive.*
 
