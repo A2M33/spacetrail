@@ -19,7 +19,7 @@ jobs:
           python-version: "3.13"
       - run: pip install -e ".[dev]" pyinstaller
       - run: pytest -q
-      - run: pyinstaller --onefile --name spacetrail --paths src packaging/entry.py
+      - run: pyinstaller --onefile --name spacetrail --icon packaging/spacetrail.ico --paths src packaging/entry.py
       - run: dist\spacetrail.exe --version
       - run: gh release upload ${{ github.event.release.tag_name }} dist/spacetrail.exe --clobber
         env:
