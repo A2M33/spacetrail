@@ -1,9 +1,9 @@
 """Render docs/demo.png: the real `spacetrail` report over a made-up drive, in the A2M33 palette.
 
 Two synthetic snapshots of X:\\ a week apart go into a throwaway database, then spacetrail
-itself prints the report with colours forced on. The ANSI output is drawn as it comes:
-amber (214) becomes the amber token, dim becomes the label grey, bold becomes Consolas Bold.
-Windows only as written (Consolas from C:/Windows/Fonts).
+itself prints the report with colours forced on. The ANSI output is drawn as it comes on the
+dark "trace" board: cyan (45) becomes the signal token, dim becomes the label grey, bold becomes
+JetBrains Mono Medium. Fonts come from tools/banner/fonts (needs a Pillow built with WOFF2 support).
 
     pip install pillow
     python tools/demo/make_demo.py
@@ -26,19 +26,23 @@ sys.path.insert(0, str(REPO / "src"))
 from spacetrail.scan import ScanResult  # noqa: E402
 from spacetrail.store import Store  # noqa: E402
 
-MONO = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 15)
-MONO_BOLD = ImageFont.truetype("C:/Windows/Fonts/consolab.ttf", 15)
-LABEL = ImageFont.truetype(str(HERE / "fonts" / "Barlow-Medium.woff2"), 16)
+FONTS = HERE.parent / "banner" / "fonts"
+MONO = ImageFont.truetype(str(FONTS / "JetBrainsMono-400.woff2"), 15)
+MONO_BOLD = ImageFont.truetype(str(FONTS / "JetBrainsMono-500.woff2"), 15)
+LABEL = ImageFont.truetype(str(FONTS / "Archivo-500.woff2"), 16)
 
-# Light values from tokens.css
-CAB = (0xE3, 0xE5, 0xE0)
-PANEL = (0xF4, 0xF5, 0xF2)
-INSET = (0xD5, 0xD9, 0xD3)
-LINE = (0xB9, 0xBF, 0xB7)
-INK = (0x1D, 0x24, 0x20)
-INK_2 = (0x56, 0x60, 0x5A)
-AMBER = (0xD9, 0x92, 0x11)
-AMBER_INK = (0x6B, 0x46, 0x00)  # amber text that stays readable on the light panel
+# Dark values from tokens.css (A2M33 "trace")
+GROUND = (0x0B, 0x12, 0x22)
+PANEL = (0x11, 0x1A, 0x2D)
+INSET = (0x18, 0x23, 0x3A)
+LINE = (0x22, 0x30, 0x4B)
+TRACE = (0x3A, 0x4D, 0x70)
+INK = (0xE6, 0xED, 0xF7)
+INK_2 = (0x93, 0xA3, 0xBD)
+SIGNAL = (0x2F, 0xCB, 0xEA)
+SIGNAL_INK = (0x7F, 0xE0, 0xF3)  # signal-coloured text
+FAULT = (0xFF, 0x6B, 0x6B)
+OK = (0x3F, 0xCF, 0x93)
 
 ROOT = "X:\\"
 MB, GB = 1024**2, 1024**3
@@ -102,8 +106,8 @@ def spans(line: str):
             bold = True
         elif code == "2":
             colour = INK_2
-        elif code == "38;5;214":
-            colour = AMBER
+        elif code == "38;5;45":
+            colour = SIGNAL
         else:
             raise ValueError(f"no palette colour for SGR {code!r}")
         pos = m.end()
@@ -124,12 +128,12 @@ def render(lines: list[str]) -> Image.Image:
     cols = max(len(SGR.sub("", line)) for line in lines)
     w = max(1200, int(margin * 2 + pad * 2 + cols * cw))
     h = margin * 2 + bar + pad + len(lines) * lh + pad - 6
-    img = Image.new("RGB", (w, h), CAB)
+    img = Image.new("RGB", (w, h), GROUND)
     d = ImageDraw.Draw(img)
     d.rounded_rectangle((margin, margin, w - margin - 1, h - margin - 1), radius=6, fill=PANEL, outline=LINE)
     y_mid = margin + bar // 2
     x0 = margin + pad
-    lamp = lamp_image(AMBER)  # amber: the drive grew
+    lamp = lamp_image(SIGNAL)  # a live pad: the drive grew
     img.paste(lamp, (x0, y_mid - 6), lamp)
     d.text((x0 + 22, y_mid), "spacetrail", font=LABEL, fill=INK_2, anchor="lm")
     d.line((margin + 1, margin + bar, w - margin - 2, margin + bar), fill=LINE)
@@ -138,14 +142,14 @@ def render(lines: list[str]) -> Image.Image:
         x, y = x0, top + r * lh
         for text, colour, bold in spans(line):
             font = MONO_BOLD if bold else MONO
-            if colour == AMBER and text.strip("█ ") == "":  # the bar: amber blocks
+            if colour == SIGNAL and text.strip("█ ") == "":  # the bar: cyan blocks
                 n = len(text.rstrip())
-                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=AMBER)
+                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=SIGNAL)
             elif colour == INK_2 and text.strip("█ ") == "" and "█" in text:  # a dim bar
                 n = len(text.rstrip())
-                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=LINE)
+                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=TRACE)
             else:
-                d.text((x, y), text, font=font, fill=AMBER_INK if colour == AMBER else colour)
+                d.text((x, y), text, font=font, fill=SIGNAL_INK if colour == SIGNAL else colour)
             x += len(text) * cw
     return img
 

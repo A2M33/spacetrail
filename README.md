@@ -1,10 +1,10 @@
-<p align="center"><img src="docs/header.svg" alt="spacetrail" width="100%"></p>
+<p align="center"><img src="docs/banner.png" alt="spacetrail: a weekly report for drive X: in a terminal, with the new 2.3 GB Hades II folder at the top of the folders that grew" width="100%"></p>
 
 <p align="center">
-  <a href="https://github.com/A2M33/spacetrail/actions/workflows/test.yml"><img alt="tests" src="https://github.com/A2M33/spacetrail/actions/workflows/test.yml/badge.svg"></a>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
-  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-3fb950">
-  <a href="https://github.com/A2M33/spacetrail/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950"></a>
+  <a href="https://github.com/A2M33/spacetrail/actions/workflows/test.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/A2M33/spacetrail/test.yml?label=tests&style=flat-square&labelColor=111a2d&color=22304b"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-22304b?style=flat-square&labelColor=111a2d&color=22304b">
+  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-22304b?style=flat-square&labelColor=111a2d&color=22304b">
+  <a href="https://github.com/A2M33/spacetrail/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22304b?style=flat-square&labelColor=111a2d&color=22304b"></a>
 </p>
 
 Your drive was fine last week and now it's full. spacetrail tells you which folders ate the space.

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>spacetrail banner</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="banner.css">
+<script src="trace.js"></script>
+<style>
+  .term { position: absolute; left: 552px; top: 72px; width: 656px; padding: 0 0 18px;
+          background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-panel);
+          font: 400 14px/1.7 var(--font-code); color: var(--ink); font-variant-ligatures: none; }
+  .term header { display: flex; align-items: center; gap: 10px; padding: 12px 22px; border-bottom: 1px solid var(--line);
+                 font: 500 15px/1 var(--font); color: var(--ink-2); margin-bottom: 12px; }
+  .term p { margin: 0 22px; white-space: pre; }
+  .term b { font-weight: 500; }
+  .term .dim { color: var(--ink-2); }
+  .term .hit { color: var(--signal-ink); }
+  /* bars are drawn as blocks n characters wide: the font has no full-block glyph */
+  .term .bar { display: inline-block; height: 0.95em; vertical-align: -0.12em; background: var(--signal); }
+  .term .bar.dim { background: var(--trace); }
+</style>
+</head>
+<body>
+<main class="sheet">
+  <section class="intro">
+    <img class="icon" src="icon.png" alt="">
+    <h1>spacetrail</h1>
+    <p class="sub">Finds the folders that filled your drive this week.</p>
+    <p class="meta"><span class="pad" data-state="live"></span>Python · Windows, Linux, macOS</p>
+  </section>
+
+  <!-- Real output: `spacetrail --min 500MB` at 72 columns, over the two snapshots tools/demo/make_demo.py builds. -->
+  <section class="term" aria-label="Terminal">
+    <header><span class="pad"></span>spacetrail</header>
+    <p><b>PS&gt; spacetrail --min 500MB</b></p>
+    <p><b>X:\</b><span class="dim">   Nov 02, 12:22 (7 days ago)  -&gt;  Nov 09, 12:22 (today)</span></p>
+    <p>  folder size 27.3 GB (+4.9 GB)   free space 47.2 GB -&gt; 42.1 GB</p>
+    <p> </p>
+    <p><b>  Grew</b></p>
+    <p id="t-key">  <span class="hit">   +2.3 GB</span>  <span class="bar" style="width:10ch"></span>  … Files (x86)\Steam\steamapps\common\Hades II</p>
+    <p>  <span class="hit">   +1.7 GB</span>  <span class="bar" style="width:7ch"></span>     Users\amin\Downloads</p>
+    <p>  <span class="hit"> +990.0 MB</span>  <span class="bar" style="width:4ch"></span>        Users\amin\AppData\Local</p>
+    <p>  <span class="hit"> +610.0 MB</span>  <span class="bar" style="width:3ch"></span>         Users\amin\AppData\Local\Google\Chrome</p>
+    <p class="dim">              Browser data, mostly cache. In the browser: Settings &gt;</p>
+    <p class="dim">              Privacy &gt; Clear browsing data &gt; Cached images and files.</p>
+    <p> </p>
+    <p><b>  Shrank</b></p>
+    <p>   -830.0 MB  <span class="bar dim" style="width:10ch"></span>  Users\amin\Videos\Captures</p>
+  </section>
+
+  <p class="callout lit" id="c-key" style="left:572px;top:520px;width:430px"><b>The folder that grew, not just its parent</b>Each report compares today's snapshot with last week's and names the deepest folder that explains the change</p>
+</main>
+<script>
+  // One lit trace: from the callout, left into the gap beside the terminal, up, then in
+  // through the terminal's left edge to a pad in the empty indent of the key line.
+  traces([]);
+  const svg = document.querySelector("svg.traces"), ns = "http://www.w3.org/2000/svg";
+  const key = document.getElementById("t-key").getBoundingClientRect();
+  const label = document.querySelector("#c-key b").getBoundingClientRect();
+  const sx = label.left - 12, sy = label.top + label.height / 2;
+  const gx = 516, c = 12, ky = key.top + key.height / 2, kx = key.left + 26;
+  const g = document.createElementNS(ns, "g");
+  g.setAttribute("class", "lit");
+  const p = document.createElementNS(ns, "path");
+  p.setAttribute("d", `M${sx} ${sy} H${gx + c} L${gx} ${sy - c} V${ky + c} L${gx + c} ${ky} H${kx}`);
+  g.append(p);
+  for (const [x, y, r, cls] of [[sx, sy, 3, "start"], [kx, ky, 3.5, "end"]]) {
+    const e = document.createElementNS(ns, "circle");
+    e.setAttribute("cx", x); e.setAttribute("cy", y); e.setAttribute("r", r); e.setAttribute("class", cls);
+    g.append(e);
+  }
+  svg.append(g);
+</script>
+</body>
+</html>

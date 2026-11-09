@@ -63,11 +63,11 @@ def test_piped_rows_keep_the_whole_path(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("growing", [True, False])
-def test_only_growth_is_amber(growing, monkeypatch, capsys):
+def test_only_growth_is_cyan(growing, monkeypatch, capsys):
     monkeypatch.setattr(cli, "terminal_width", lambda: None)
     cli._print_rows(rows(), ROOT, cli.Style(True), growing=growing)
     out = capsys.readouterr().out
-    assert ("\033[38;5;214m +300.0 MB" in out) is growing
+    assert ("\033[38;5;45m +300.0 MB" in out) is growing
     assert "\033[2m" in out  # the sizes column is a dim label either way
     assert not any(f"\033[{code}m" in out for code in ("31", "32", "33"))  # no red, green or yellow
 

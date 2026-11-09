@@ -100,8 +100,8 @@ def _print_rows(rows: list[Change], root: str, s: Style, growing: bool) -> None:
         after = human(c.after) if c.after else "deleted"
         sizes = f"{before:>9} -> {after:<9}"
         bars = bar(abs(c.delta), top)
-        # Growth is the one thing in amber; what shrank is plain text with a dim bar.
-        size, bars = (s.amber(size), s.amber(bars)) if growing else (size, s.dim(bars))
+        # Growth is the one thing in cyan; what shrank is plain text with a dim bar.
+        size, bars = (s.signal(size), s.signal(bars)) if growing else (size, s.dim(bars))
         columns = [(10, size), (10, bars), (len(sizes), s.dim(sizes))]
         print(_row(columns, _short(c.path, root), width))
         if growing:
