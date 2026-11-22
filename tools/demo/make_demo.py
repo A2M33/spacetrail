@@ -3,7 +3,7 @@
 Two synthetic snapshots of X:\\ a week apart go into a throwaway database, then spacetrail
 itself prints the report with colours forced on. The ANSI output is drawn as it comes on the
 dark "trace" board: cyan (45) becomes the signal token, dim becomes the label grey, bold becomes
-JetBrains Mono Medium. Fonts come from tools/banner/fonts (needs a Pillow built with WOFF2 support).
+JetBrains Mono Medium. Fonts come from tools/demo/fonts (needs a Pillow built with WOFF2 support).
 
     pip install pillow
     python tools/demo/make_demo.py
@@ -26,12 +26,12 @@ sys.path.insert(0, str(REPO / "src"))
 from spacetrail.scan import ScanResult  # noqa: E402
 from spacetrail.store import Store  # noqa: E402
 
-FONTS = HERE.parent / "banner" / "fonts"
+FONTS = HERE / "fonts"
 MONO = ImageFont.truetype(str(FONTS / "JetBrainsMono-400.woff2"), 15)
 MONO_BOLD = ImageFont.truetype(str(FONTS / "JetBrainsMono-500.woff2"), 15)
 LABEL = ImageFont.truetype(str(FONTS / "Archivo-500.woff2"), 16)
 
-# Dark values from tokens.css (A2M33 "trace")
+# Dark "trace" palette
 GROUND = (0x0B, 0x12, 0x22)
 PANEL = (0x11, 0x1A, 0x2D)
 INSET = (0x18, 0x23, 0x3A)
