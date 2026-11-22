@@ -1,11 +1,5 @@
-"""Render docs/demo.png: the real `spacetrail` report over a made-up drive, in the A2M33 palette.
+"""Print the spacetrail report shown in the README as plain text (escape codes removed).
 
-Two synthetic snapshots of X:\\ a week apart go into a throwaway database, then spacetrail
-itself prints the report with colours forced on. The ANSI output is drawn as it comes on the
-dark "trace" board: cyan (45) becomes the signal token, dim becomes the label grey, bold becomes
-JetBrains Mono Medium. Fonts come from tools/demo/fonts (needs a Pillow built with WOFF2 support).
-
-    pip install pillow
     python tools/demo/make_demo.py
 """
 import os
@@ -16,20 +10,14 @@ import tempfile
 import time
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
-OUT = REPO / "docs" / "demo.png"
 sys.path.insert(0, str(REPO / "src"))
 
 from spacetrail.scan import ScanResult  # noqa: E402
 from spacetrail.store import Store  # noqa: E402
 
-FONTS = HERE / "fonts"
-MONO = ImageFont.truetype(str(FONTS / "JetBrainsMono-400.woff2"), 15)
-MONO_BOLD = ImageFont.truetype(str(FONTS / "JetBrainsMono-500.woff2"), 15)
-LABEL = ImageFont.truetype(str(FONTS / "Archivo-500.woff2"), 16)
 
 # Dark "trace" palette
 GROUND = (0x0B, 0x12, 0x22)
@@ -90,72 +78,9 @@ def capture() -> str:
     return out.decode("utf-8").replace("\r\n", "\n").rstrip("\n")
 
 
-SGR = re.compile("\x1b\\[([0-9;]*)m")
-
-
-def spans(line: str):
-    """(text, colour, bold) pieces of one line of ANSI output."""
-    colour, bold, pos = INK, False, 0
-    for m in SGR.finditer(line):
-        if m.start() > pos:
-            yield line[pos:m.start()], colour, bold
-        code = m.group(1)
-        if code in ("", "0"):
-            colour, bold = INK, False
-        elif code == "1":
-            bold = True
-        elif code == "2":
-            colour = INK_2
-        elif code == "38;5;45":
-            colour = SIGNAL
-        else:
-            raise ValueError(f"no palette colour for SGR {code!r}")
-        pos = m.end()
-    if pos < len(line):
-        yield line[pos:], colour, bold
-
-
-def lamp_image(colour, size=12, scale=8):
-    """An anti-aliased round lamp (drawn large, scaled down)."""
-    big = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
-    ImageDraw.Draw(big).ellipse((0, 0, size * scale - 1, size * scale - 1), fill=colour, outline=colour, width=scale)
-    return big.resize((size, size), Image.LANCZOS)
-
-
-def render(lines: list[str]) -> Image.Image:
-    lh, margin, pad, bar = 24, 20, 26, 40
-    cw = MONO.getlength("M")
-    cols = max(len(SGR.sub("", line)) for line in lines)
-    w = max(1200, int(margin * 2 + pad * 2 + cols * cw))
-    h = margin * 2 + bar + pad + len(lines) * lh + pad - 6
-    img = Image.new("RGB", (w, h), GROUND)
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((margin, margin, w - margin - 1, h - margin - 1), radius=6, fill=PANEL, outline=LINE)
-    y_mid = margin + bar // 2
-    x0 = margin + pad
-    lamp = lamp_image(SIGNAL)  # a live pad: the drive grew
-    img.paste(lamp, (x0, y_mid - 6), lamp)
-    d.text((x0 + 22, y_mid), "spacetrail", font=LABEL, fill=INK_2, anchor="lm")
-    d.line((margin + 1, margin + bar, w - margin - 2, margin + bar), fill=LINE)
-    top = margin + bar + pad - 4
-    for r, line in enumerate(lines):
-        x, y = x0, top + r * lh
-        for text, colour, bold in spans(line):
-            font = MONO_BOLD if bold else MONO
-            if colour == SIGNAL and text.strip("█ ") == "":  # the bar: cyan blocks
-                n = len(text.rstrip())
-                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=SIGNAL)
-            elif colour == INK_2 and text.strip("█ ") == "" and "█" in text:  # a dim bar
-                n = len(text.rstrip())
-                d.rectangle((x, y + 3, x + n * cw - 1, y + lh - 6), fill=TRACE)
-            else:
-                d.text((x, y), text, font=font, fill=SIGNAL_INK if colour == SIGNAL else colour)
-            x += len(text) * cw
-    return img
-
-
-lines = ["PS> spacetrail", *capture().splitlines()]
-lines[0] = "\x1b[1m" + lines[0] + "\x1b[0m"
-img = render(lines)
-img.save(OUT, optimize=True)
-print(OUT, img.size)
+out = ["PS> spacetrail", *capture().splitlines()]
+ESC = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+lines = out.splitlines() if isinstance(out, str) else out
+text = "\n".join(ESC.sub("", line).rstrip() for line in lines).rstrip()
+sys.stdout.reconfigure(encoding="utf-8")
+print(text)
